@@ -31,6 +31,16 @@ func NewDemo(c config.Config) *Demo {
 		}
 		d.states[it.Entity] = ha.State{State: state, Attr: map[string]any{}}
 	}
+	for i, it := range c.Windows {
+		state := "off"
+		if strings.HasPrefix(it.Entity, "cover.") {
+			state = "closed"
+		}
+		if i == 0 {
+			state = map[string]string{"off": "on", "closed": "open"}[state]
+		}
+		d.states[it.Entity] = ha.State{State: state, Attr: map[string]any{}}
+	}
 	for _, it := range c.Notifications {
 		d.states[it.Entity] = ha.State{State: "on", Attr: map[string]any{}}
 	}
@@ -109,6 +119,10 @@ func (d *Demo) Call(_, service, entity string, data map[string]any) error {
 		} else {
 			st.State = "on"
 		}
+	case "open_cover":
+		st.State = "open"
+	case "close_cover":
+		st.State = "closed"
 	case "turn_off":
 		st.State = "off"
 	case "turn_on":

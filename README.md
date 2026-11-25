@@ -32,6 +32,10 @@ I pulsanti in basso passano tra **Casa** (grafici delle temperature e
 calendario), **Luci** e **Clima**. Dopo `return_home` senza tocchi si torna a
 Casa. I calendari si elencano nella sezione `[calendar]`.
 
+La pagina Clima mostra anche le finestre di `[windows]`; **Apri** chiede un
+secondo tocco di conferma. Le luci usano le icone di Home Assistant (Material
+Design Icons, vedi `internal/ui/mdi/LICENSE.txt`).
+
 ## Avvisi
 
 Le entità in `[notifications]` compaiono come etichette nell'intestazione solo

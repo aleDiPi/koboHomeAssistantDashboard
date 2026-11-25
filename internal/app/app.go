@@ -29,12 +29,12 @@ type Source interface {
 }
 
 const (
-	settleDelay = 150 * time.Millisecond // groups bursts of state changes
-	pressTime   = 600 * time.Millisecond // how long a tapped tile stays inverted
-	tempDelay   = 900 * time.Millisecond // idle time before sending a temperature
-	tempExpiry  = 8 * time.Second        // give up waiting for confirmation
-	exitWindow  = 4 * time.Second
-	maxPartials = 60 // flash after this many partial updates, against ghosting
+	settleDelay   = 150 * time.Millisecond // groups bursts of state changes
+	pressTime     = 600 * time.Millisecond // how long a tapped tile stays inverted
+	tempDelay     = 900 * time.Millisecond // idle time before sending a temperature
+	tempExpiry    = 8 * time.Second        // give up waiting for confirmation
+	confirmWindow = 4 * time.Second
+	maxPartials   = 60 // flash after this many partial updates, against ghosting
 )
 
 type pending struct {
@@ -49,13 +49,14 @@ type App struct {
 	disp screen.Display
 	loc  *time.Location
 
-	frame     ui.Frame
-	view      ui.View
-	page      int
-	temps     map[string]*pending
-	exitUntil time.Time
-	lastFlash time.Time
-	partials  int
+	frame      ui.Frame
+	view       ui.View
+	page       int
+	temps      map[string]*pending
+	armed      ui.Action // waiting for a second touch
+	armedUntil time.Time
+	lastFlash  time.Time
+	partials   int
 
 	lastTouch  time.Time
 	light      int // frontlight level in use, -1 before the first one
@@ -124,8 +125,8 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			if a.flushTemps(now) {
 				schedule(0)
 			}
-			if !a.exitUntil.IsZero() && now.After(a.exitUntil) {
-				a.exitUntil = time.Time{}
+			if a.armed.Kind != ui.None && now.After(a.armedUntil) {
+				a.armed = ui.Action{}
 				schedule(0)
 			}
 			if m := a.now().Minute(); m != minute {
@@ -147,8 +148,8 @@ func (a *App) model() ui.Model {
 	m := ui.Model{
 		Config: a.cfg, States: states, Connected: connected,
 		Now: a.now(), View: a.view, Page: a.page, Pending: map[string]float64{},
-		ExitArmed: !a.exitUntil.IsZero(),
-		History:   a.src.History(), Battery: a.battery, Events: a.src.Events(),
+		Armed:   a.armed,
+		History: a.src.History(), Battery: a.battery, Events: a.src.Events(),
 	}
 	switch {
 	case errors.Is(err, ha.ErrAuth):
@@ -238,17 +239,28 @@ func (a *App) tap(p image.Point) (exit bool, delay time.Duration) {
 	a.partials++
 
 	act := region.Action
+	// Any other touch cancels a pending confirmation.
+	confirmed := a.armed == act
+	a.armed = ui.Action{}
 	states, _, _ := a.src.Snapshot()
 	st := states[act.Entity]
 	domain, _, _ := strings.Cut(act.Entity, ".")
 
 	switch act.Kind {
 	case ui.Exit:
-		if !a.exitUntil.IsZero() {
+		if confirmed {
 			return true, 0
 		}
-		a.exitUntil = time.Now().Add(exitWindow)
+		a.arm(act)
 		return false, 0
+	case ui.OpenCover:
+		if !confirmed {
+			a.arm(act)
+			return false, 0
+		}
+		a.call("cover", "open_cover", act.Entity, nil)
+	case ui.CloseCover:
+		a.call("cover", "close_cover", act.Entity, nil)
 	case ui.Show:
 		a.view, a.page = act.View, 0
 		return false, 0
@@ -279,6 +291,10 @@ func (a *App) call(domain, service, entity string, data map[string]any) {
 	if err := a.src.Call(domain, service, entity, data); err != nil {
 		log.Printf("call failed: %v", err)
 	}
+}
+
+func (a *App) arm(act ui.Action) {
+	a.armed, a.armedUntil = act, time.Now().Add(confirmWindow)
 }
 
 // returnHome goes back to the home view after a while without touches.

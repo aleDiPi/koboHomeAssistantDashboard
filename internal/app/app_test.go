@@ -162,3 +162,32 @@ func TestNavigationAndReturnHome(t *testing.T) {
 		t.Fatal("did not go home when idle")
 	}
 }
+
+// A window must not open on a single accidental touch.
+func TestOpeningAWindowNeedsTwoTaps(t *testing.T) {
+	cfg := config.Default()
+	cfg.Windows = []config.Item{{Entity: "cover.a", Name: "A"}, {Entity: "cover.b", Name: "B"}}
+	demo := NewDemo(cfg)
+	a := New(cfg, demo, &fakeDisplay{}, time.UTC)
+	a.view = ui.Climate
+	a.render(true)
+	var open ui.Region
+	for _, r := range a.frame.Regions {
+		if r.Action.Kind == ui.OpenCover && r.Action.Entity == "cover.b" {
+			open = r
+		}
+	}
+	state := func() string {
+		s, _, _ := demo.Snapshot()
+		return s["cover.b"].State
+	}
+	a.tap(centre(open.Rect))
+	a.render(false)
+	if state() != "closed" {
+		t.Fatal("opened on the first tap")
+	}
+	a.tap(centre(open.Rect))
+	if state() != "open" {
+		t.Fatal("did not open on the second tap")
+	}
+}

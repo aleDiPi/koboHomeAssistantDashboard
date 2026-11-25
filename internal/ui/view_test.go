@@ -67,3 +67,35 @@ func TestWhenAndUpcoming(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestIcons(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		on   bool
+		want string
+	}{
+		{"lightbulb", true, "lightbulb"},
+		{"lightbulb", false, "lightbulb-outline"},
+		{"track-light", false, "track-light"}, // no outline variant
+	} {
+		if got := stateIcon(tc.name, tc.on); got != tc.want {
+			t.Errorf("%s on=%v: %s", tc.name, tc.on, got)
+		}
+	}
+	if got := iconName("", "mdi:does-not-exist", "mdi:sofa"); got != "sofa" {
+		t.Errorf("got %s", got)
+	}
+	img := image.NewGray(image.Rect(0, 0, 100, 100))
+	icon(img, "lightbulb", 60, 50, 50, white)
+	var ink image.Rectangle
+	for y := 0; y < 100; y++ {
+		for x := 0; x < 100; x++ {
+			if img.GrayAt(x, y).Y > 128 {
+				ink = ink.Union(image.Rect(x, y, x+1, y+1))
+			}
+		}
+	}
+	if c := ink.Min.Add(ink.Max).Div(2); ink.Dy() < 30 || c.X < 44 || c.X > 56 || c.Y < 42 || c.Y > 58 {
+		t.Errorf("icon drawn at %v", ink)
+	}
+}

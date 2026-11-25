@@ -76,23 +76,6 @@ func line(img *image.Gray, ax, ay, bx, by, width float64, g uint8) {
 	paint(img, area, segment(ax, ay, bx, by, width), g)
 }
 
-// bulb draws a light bulb centred on (cx, cy); a lit one is solid and shines.
-func bulb(img *image.Gray, cx, cy float64, on bool, g uint8) {
-	area := image.Rect(int(cx)-32, int(cy)-34, int(cx)+33, int(cy)+34)
-	glass := circle(cx, cy-5, 13)
-	if on {
-		paint(img, area, glass, g)
-		for _, deg := range []float64{180, 225, 270, 315, 360} {
-			s, c := math.Sincos(deg * math.Pi / 180)
-			line(img, cx+19*c, cy-5+19*s, cx+26*c, cy-5+26*s, 3, g)
-		}
-	} else {
-		paint(img, area, outline(glass, 3), g)
-	}
-	line(img, cx-6, cy+12, cx+6, cy+12, 3, g)
-	line(img, cx-5, cy+18, cx+5, cy+18, 3, g)
-}
-
 // powerSymbol is the usual broken ring with a bar.
 func powerSymbol(img *image.Gray, cx, cy float64, g uint8) {
 	area := image.Rect(int(cx)-22, int(cy)-22, int(cx)+23, int(cy)+23)

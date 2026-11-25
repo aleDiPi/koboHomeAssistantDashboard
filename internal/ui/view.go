@@ -27,6 +27,8 @@ const (
 	NextPage
 	Exit
 	Show // switch to another view
+	OpenCover
+	CloseCover
 )
 
 // View is one of the screens.
@@ -63,9 +65,10 @@ type Model struct {
 	Events    []ha.Event
 	Page      int
 	// Target temperatures chosen by the user and not yet confirmed.
-	Pending   map[string]float64
-	ExitArmed bool
-	Battery   int // percent, negative if unknown
+	Pending map[string]float64
+	// Armed is the action waiting for a confirming second touch.
+	Armed   Action
+	Battery int // percent, negative if unknown
 }
 
 type Frame struct {
@@ -84,13 +87,15 @@ const (
 	lightHeight  = 96
 	climateH     = 164
 	navHeight    = 68
+	windowLow    = 140
 	radius       = 18
 )
 
 type block struct {
-	item config.Item
-	rect image.Rectangle
-	page int
+	item   config.Item
+	rect   image.Rectangle
+	page   int
+	window bool
 }
 
 // body is the area between the header and the navigation bar.
@@ -112,7 +117,7 @@ func grid(items []config.Item, area image.Rectangle, cols, lowest, highest int) 
 		row := i / cols
 		x := area.Min.X + (i%cols)*(width+gap)
 		y := area.Min.Y + (row%perPage)*(height+gap)
-		blocks = append(blocks, block{it, image.Rect(x, y, x+width, y+height), row / perPage})
+		blocks = append(blocks, block{item: it, rect: image.Rect(x, y, x+width, y+height), page: row / perPage})
 	}
 	return blocks, (rows-1)/perPage + 1
 }
@@ -138,7 +143,24 @@ func Render(m Model, w, h int) Frame {
 		if landscape {
 			cols = 2
 		}
-		blocks, pages = grid(m.Config.Climate, area, cols, climateH, 220)
+		blocks, pages = grid(m.Config.Climate, area, cols, climateH, 200)
+		// Windows go under the air conditioners, or on further pages.
+		rest, first := area, 0
+		if n := len(blocks); n > 0 {
+			rest.Min.Y, first = blocks[n-1].rect.Max.Y+gap, pages-1
+			if rest.Dy() < windowLow || blocks[n-1].page != first {
+				rest, first = area, pages
+			}
+		}
+		more, morePages := grid(m.Config.Windows, rest, cols, windowLow, 170)
+		for _, b := range more {
+			b.page += first
+			b.window = true
+			blocks = append(blocks, b)
+		}
+		if len(more) > 0 {
+			pages = max(pages, first+morePages)
+		}
 	default:
 		blocks, _ = grid(m.Config.Sensors, area, 4, sensorHeight, sensorHeight+20)
 	}
@@ -164,7 +186,11 @@ func Render(m Model, w, h int) Frame {
 		case Lights:
 			drawLight(&f, b, name, st, available)
 		case Climate:
-			drawClimate(&f, m, b, name, st, available)
+			if b.window {
+				drawWindow(&f, m, b, name, st, available)
+			} else {
+				drawClimate(&f, m, b, name, st, available)
+			}
 		default:
 			drawSensor(&f, m, b, name, st, available)
 		}
@@ -234,10 +260,11 @@ func drawHeader(f *Frame, m Model, w int) {
 
 	exit := image.Rect(w-margin-112, 8, w-margin, headerHeight-6)
 	label := "Esci"
-	if m.ExitArmed {
+	armed := m.Armed.Kind == Exit
+	if armed {
 		label = "Sicuro?"
 	}
-	pill(f, exit, label, m.ExitArmed, true, Action{Kind: Exit})
+	pill(f, exit, label, armed, true, Action{Kind: Exit})
 	edge := exit.Min.X - gap
 	if f.Pages > 1 {
 		next := exit.Sub(image.Pt(exit.Dx()+gap, 0))
@@ -450,6 +477,11 @@ func sparkline(img *image.Gray, r image.Rectangle, points []ha.Point, now time.T
 func drawLight(f *Frame, b block, name string, st ha.State, available bool) {
 	img, r := f.Image, b.rect
 	on := available && st.State == "on"
+	fallback := "lightbulb"
+	if len(st.Strings("entity_id")) > 0 {
+		fallback = "lightbulb-group"
+	}
+	symbol := stateIcon(iconName(b.item.Icon, st.String("icon"), fallback), on)
 	bg, fg, edge := white, black, darkGray
 	action := Action{Kind: Toggle, Entity: b.item.Entity}
 	state := "spenta"
@@ -462,14 +494,14 @@ func drawLight(f *Frame, b block, name string, st ha.State, available bool) {
 	card(img, r, radius, 3, bg, edge)
 	if r.Dy() >= 130 {
 		// A tall tile stacks symbol, name and state.
-		bulb(img, float64(r.Min.X+r.Max.X)/2, float64(r.Min.Y)+float64(r.Dy())*0.28, on, fg)
+		icon(img, symbol, 72, (r.Min.X+r.Max.X)/2, r.Min.Y+r.Dy()*30/100, fg)
 		box := r.Inset(10)
 		text(img, face(true, 26), name, box, r.Min.Y+r.Dy()*64/100, center, fg)
 		text(img, face(false, 20), state, box, r.Min.Y+r.Dy()*84/100, center, fg)
 		f.region(r, radius, action)
 		return
 	}
-	bulb(img, float64(r.Min.X+38), float64(r.Min.Y+r.Dy()/2), on, fg)
+	icon(img, symbol, 46, r.Min.X+38, r.Min.Y+r.Dy()/2, fg)
 
 	box := image.Rect(r.Min.X+72, r.Min.Y, r.Max.X-10, r.Max.Y)
 	big := face(true, 24)
