@@ -60,6 +60,7 @@ type App struct {
 	partials   int
 
 	lastTouch  time.Time
+	rendered   time.Time
 	light      int // frontlight level in use, -1 before the first one
 	battery    int
 	batteryLog time.Time
@@ -123,6 +124,9 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			if a.returnHome(now) {
 				schedule(0)
 			}
+			if a.frame.Countdown && now.Sub(a.rendered) >= ui.CountdownStep {
+				schedule(0)
+			}
 			if a.flushTemps(now) {
 				schedule(0)
 			}
@@ -175,6 +179,7 @@ func (a *App) render(flash bool) {
 	w, h := a.disp.Size()
 	old := a.frame
 	next := ui.Render(a.model(), w, h)
+	a.rendered = time.Now()
 	a.frame, a.view, a.page = next, next.View, next.Page
 
 	var changed []image.Rectangle
@@ -269,11 +274,15 @@ func (a *App) tap(p image.Point) (exit bool, delay time.Duration) {
 		a.page = (a.frame.Page + 1) % a.frame.Pages
 		return false, 0
 	case ui.Toggle:
-		service := "toggle"
-		switch domain {
-		case "scene", "script":
-			service = "turn_on"
-		case "button", "input_button":
+		a.call(domain, "toggle", act.Entity, nil)
+	case ui.Run:
+		// Scripts can do a lot at once (open windows): they ask twice.
+		if domain == "script" && !confirmed {
+			a.arm(act)
+			return false, 0
+		}
+		service := "turn_on"
+		if domain == "button" || domain == "input_button" {
 			service = "press"
 		}
 		a.call(domain, service, act.Entity, nil)

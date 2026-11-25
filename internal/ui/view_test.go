@@ -120,3 +120,20 @@ func TestFlowKeepsEverythingInside(t *testing.T) {
 		}
 	}
 }
+
+func TestCountdown(t *testing.T) {
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	m := Model{Now: now, States: map[string]ha.State{"input_number.min": {State: "10.0"}}}
+	it := config.Item{Entity: "script.air", Timer: "input_number.min"}
+	running := ha.State{State: "on", Attr: map[string]any{"last_triggered": "2026-11-25T11:57:28.5+00:00"}}
+	leftover, total, ok := remaining(m, it, running)
+	if !ok || total != 10*time.Minute || clockLeft(leftover) != "7:30" {
+		t.Errorf("left %v of %v (%v)", leftover, total, ok)
+	}
+	if _, _, ok := remaining(m, it, ha.State{State: "off", Attr: running.Attr}); ok {
+		t.Error("a stopped script has no countdown")
+	}
+	if d, ok := duration(m, "2.5"); !ok || d != 150*time.Second {
+		t.Errorf("fixed minutes: %v", d)
+	}
+}

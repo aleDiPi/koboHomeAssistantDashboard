@@ -191,3 +191,39 @@ func TestOpeningAWindowNeedsTwoTaps(t *testing.T) {
 		t.Fatal("did not open on the second tap")
 	}
 }
+
+// A script that opens windows must not start on one accidental touch, nor be
+// started again while it runs.
+func TestScriptNeedsTwoTaps(t *testing.T) {
+	cfg := config.Default()
+	cfg.Actions = []config.Item{{Entity: "script.running", Timer: "10"}, {Entity: "script.air", Timer: "10"}}
+	demo := NewDemo(cfg)
+	a := New(cfg, demo, &fakeDisplay{}, time.UTC)
+	a.view = ui.Climate
+	a.render(true)
+	if !a.frame.Countdown {
+		t.Fatal("no countdown for the running script")
+	}
+	var buttons []ui.Region
+	for _, r := range a.frame.Regions {
+		if r.Action.Kind == ui.Run {
+			buttons = append(buttons, r)
+		}
+	}
+	if len(buttons) != 1 || buttons[0].Action.Entity != "script.air" {
+		t.Fatalf("tappable: %+v", buttons)
+	}
+	state := func() string {
+		s, _, _ := demo.Snapshot()
+		return s["script.air"].State
+	}
+	a.tap(centre(buttons[0].Rect))
+	a.render(false)
+	if state() != "off" {
+		t.Fatal("started on the first tap")
+	}
+	a.tap(centre(buttons[0].Rect))
+	if state() != "on" {
+		t.Fatal("did not start on the second tap")
+	}
+}

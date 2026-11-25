@@ -1,5 +1,10 @@
 package config
 
+import (
+	"strconv"
+	"strings"
+)
+
 // Page is one screen of the dashboard, reached from the bottom bar.
 type Page struct {
 	Title     string
@@ -7,6 +12,7 @@ type Page struct {
 	Lights    []Item // anything that is switched with one touch
 	Climate   []Item
 	Windows   []Item // contact sensors and covers
+	Actions   []Item // scripts, scenes and buttons
 	Calendars []Item
 }
 
@@ -24,7 +30,7 @@ func (c Config) LocalLayout() Layout {
 		Pages: []Page{
 			{Title: "Casa", Sensors: c.Sensors, Calendars: c.Calendars},
 			{Title: "Luci", Lights: c.Lights},
-			{Title: "Clima", Climate: c.Climate, Windows: c.Windows},
+			{Title: "Clima", Climate: c.Climate, Windows: c.Windows, Actions: c.Actions},
 		},
 	}
 }
@@ -62,7 +68,15 @@ func (l Layout) CalendarIDs() []string { return l.collect(func(p Page) []Item { 
 func (c Config) Watched(l Layout) []string {
 	lists := [][]Item{l.Notifications}
 	for _, p := range l.Pages {
-		lists = append(lists, p.Sensors, p.Lights, p.Climate, p.Windows, p.Calendars)
+		lists = append(lists, p.Sensors, p.Lights, p.Climate, p.Windows, p.Actions, p.Calendars)
+		var timers []Item
+		for _, a := range p.Actions {
+			// A timer is either a number of minutes or an entity.
+			if _, err := strconv.ParseFloat(a.Timer, 64); err != nil && strings.Contains(a.Timer, ".") {
+				timers = append(timers, Item{Entity: a.Timer})
+			}
+		}
+		lists = append(lists, timers)
 	}
 	if c.Frontlight.Manage {
 		var light []Item

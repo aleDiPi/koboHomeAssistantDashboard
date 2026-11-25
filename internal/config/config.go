@@ -17,6 +17,8 @@ type Item struct {
 	Entity string
 	Name   string
 	Icon   string // optional Material Design icon, as in "mdi:floor-lamp"
+	// Timer gives a script a countdown: minutes, or the entity holding them.
+	Timer string
 }
 
 type Config struct {
@@ -42,6 +44,7 @@ type Config struct {
 	// Shown as chips in the header while on (or open).
 	Notifications []Item
 
+	Actions   []Item // scripts, scenes and buttons
 	Calendars []Item
 	Windows   []Item // contact sensors and motorised covers
 	Sensors   []Item
@@ -101,7 +104,7 @@ func Parse(r io.Reader) (Config, error) {
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section = strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
 			switch section {
-			case "homeassistant", "display", "touch", "frontlight", "notifications", "calendar", "windows", "sensors", "lights", "climate":
+			case "homeassistant", "display", "touch", "frontlight", "notifications", "calendar", "windows", "actions", "sensors", "lights", "climate":
 			default:
 				return c, fmt.Errorf("line %d: unknown section [%s]", n, section)
 			}
@@ -111,15 +114,25 @@ func Parse(r io.Reader) (Config, error) {
 		key, val = strings.TrimSpace(key), strings.TrimSpace(val)
 
 		switch section {
-		case "sensors", "lights", "climate", "notifications", "calendar", "windows":
+		case "sensors", "lights", "climate", "notifications", "calendar", "windows", "actions":
 			if !strings.Contains(key, ".") {
 				return c, fmt.Errorf("line %d: %q is not an entity id", n, key)
 			}
-			name, icon, _ := strings.Cut(val, "|")
-			it := Item{Entity: key, Name: strings.TrimSpace(name), Icon: strings.TrimSpace(icon)}
+			// name | mdi:icon | timer, the last two optional and in any order
+			fields := strings.Split(val, "|")
+			it := Item{Entity: key, Name: strings.TrimSpace(fields[0])}
+			for _, field := range fields[1:] {
+				if field = strings.TrimSpace(field); strings.HasPrefix(field, "mdi:") {
+					it.Icon = field
+				} else {
+					it.Timer = field
+				}
+			}
 			switch section {
 			case "sensors":
 				c.Sensors = append(c.Sensors, it)
+			case "actions":
+				c.Actions = append(c.Actions, it)
 			case "windows":
 				c.Windows = append(c.Windows, it)
 			case "calendar":

@@ -32,3 +32,16 @@ func TestParseDashboard(t *testing.T) {
 		t.Error("an empty dashboard must be rejected")
 	}
 }
+
+func TestScriptWithTimer(t *testing.T) {
+	l, err := parseDashboard([]byte(`{"views":[{"cards":[
+	 {"type":"tile","entity":"script.air","kobo_timer":"input_number.minutes"},
+	 {"type":"tile","entity":"script.other","kobo_timer":5}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := l.Pages[0].Actions
+	if len(a) != 2 || a[0].Timer != "input_number.minutes" || a[1].Timer != "5" || len(l.Pages[0].Lights) != 0 {
+		t.Errorf("%+v", l.Pages[0])
+	}
+}

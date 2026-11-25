@@ -18,9 +18,11 @@ import (
 const maxPages = 6
 
 type llCard struct {
-	Entity   string            `json:"entity"`
-	Name     any               `json:"name"`
-	Icon     string            `json:"icon"`
+	Entity string `json:"entity"`
+	Name   any    `json:"name"`
+	Icon   string `json:"icon"`
+	// Our own key: the countdown of a script, in minutes or as an entity.
+	Timer    any               `json:"kobo_timer"`
 	Entities []json.RawMessage `json:"entities"`
 	Cards    []llCard          `json:"cards"`
 	Card     *llCard           `json:"card"` // conditional cards
@@ -35,6 +37,16 @@ type llView struct {
 	} `json:"sections"`
 }
 
+func timer(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	}
+	return ""
+}
+
 // reference reads "light.x" or {"entity": "light.x", "name": ..., "icon": ...}.
 func reference(raw json.RawMessage) (config.Item, bool) {
 	var id string
@@ -46,13 +58,13 @@ func reference(raw json.RawMessage) (config.Item, bool) {
 		return config.Item{}, false
 	}
 	name, _ := c.Name.(string)
-	return config.Item{Entity: c.Entity, Name: name, Icon: c.Icon}, strings.Contains(c.Entity, ".")
+	return config.Item{Entity: c.Entity, Name: name, Icon: c.Icon, Timer: timer(c.Timer)}, strings.Contains(c.Entity, ".")
 }
 
 func (c llCard) items(out []config.Item) []config.Item {
 	name, _ := c.Name.(string)
 	if strings.Contains(c.Entity, ".") {
-		out = append(out, config.Item{Entity: c.Entity, Name: name, Icon: c.Icon})
+		out = append(out, config.Item{Entity: c.Entity, Name: name, Icon: c.Icon, Timer: timer(c.Timer)})
 	}
 	for _, raw := range c.Entities {
 		if it, ok := reference(raw); ok {
@@ -74,8 +86,10 @@ func addToPage(p *config.Page, it config.Item) {
 	switch domain {
 	case "sensor", "input_number", "number":
 		list = &p.Sensors
-	case "light", "switch", "input_boolean", "fan", "script", "scene", "button", "input_button":
+	case "light", "switch", "input_boolean", "fan":
 		list = &p.Lights
+	case "script", "scene", "button", "input_button":
+		list = &p.Actions
 	case "climate":
 		list = &p.Climate
 	case "cover", "binary_sensor":

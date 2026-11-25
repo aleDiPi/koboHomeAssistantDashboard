@@ -29,6 +29,7 @@ const (
 	Show // switch to another view
 	OpenCover
 	CloseCover
+	Run // start a script, scene or button
 )
 
 // View is the index of one of the pages.
@@ -78,6 +79,8 @@ type Frame struct {
 	View    View
 	Page    int
 	Pages   int
+	// Countdown means a time left is on screen and must be kept current.
+	Countdown bool
 }
 
 const (
@@ -89,6 +92,7 @@ const (
 	climateH     = 164
 	navHeight    = 68
 	windowLow    = 140
+	actionLow    = 96
 	radius       = 18
 )
 
@@ -99,6 +103,7 @@ const (
 	lightBlock
 	climateBlock
 	windowBlock
+	actionBlock
 	calendarBlock
 )
 
@@ -135,6 +140,7 @@ func flow(p config.Page, area image.Rectangle, landscape bool) (blocks []block, 
 		{lightBlock, p.Lights, cols(4, 3), lightHeight, 190},
 		{climateBlock, p.Climate, cols(2, 1), climateH, 200},
 		{windowBlock, p.Windows, cols(2, 1), windowLow, 170},
+		{actionBlock, p.Actions, cols(2, 1), actionLow, 130},
 	} {
 		if len(s.items) > 0 {
 			sections = append(sections, s)
@@ -144,7 +150,10 @@ func flow(p config.Page, area image.Rectangle, landscape bool) (blocks []block, 
 	sheet, y := 0, area.Min.Y
 	for n, s := range sections {
 		// Only the last grid may stretch over the remaining space.
-		if n < len(sections)-1 || len(p.Calendars) > 0 {
+		// With several kinds on one page the others stay compact.
+		if n < len(sections)-1 && len(sections) > 2 {
+			s.highest = s.lowest
+		} else if n < len(sections)-1 || len(p.Calendars) > 0 {
 			s.highest = min(s.highest, s.lowest+20)
 		}
 		if area.Max.Y-y < s.lowest {
@@ -210,23 +219,19 @@ func Render(m Model, w, h int) Frame {
 		case sensorBlock:
 			drawSensor(&f, m, b, name, st, available)
 		case lightBlock:
-			// Scenes and buttons have no state of their own until first used.
-			available = available || (m.Connected && known && momentary(b.item.Entity) && st.State == "unknown")
 			drawLight(&f, b, name, st, available)
 		case climateBlock:
 			drawClimate(&f, m, b, name, st, available)
 		case windowBlock:
 			drawWindow(&f, m, b, name, st, available)
+		case actionBlock:
+			// A scene or button never used yet has an unknown state.
+			available = available || (m.Connected && known && st.State == "unknown")
+			drawAction(&f, m, b, name, st, available)
 		}
 	}
 	drawNav(&f, m, w, h)
 	return f
-}
-
-// momentary entities are run rather than switched on and off.
-func momentary(entity string) bool {
-	domain, _, _ := strings.Cut(entity, ".")
-	return domain == "scene" || domain == "script" || domain == "button" || domain == "input_button"
 }
 
 // drawNav draws the buttons that switch page, with what is on in each.
@@ -517,9 +522,6 @@ func drawLight(f *Frame, b block, name string, st ha.State, available bool) {
 	offWord, onWord := "spento", "acceso"
 	if strings.HasPrefix(b.item.Entity, "light.") {
 		offWord, onWord = "spenta", "accesa"
-	}
-	if momentary(b.item.Entity) {
-		offWord = "tocca per avviare"
 	}
 	state := offWord
 	switch {

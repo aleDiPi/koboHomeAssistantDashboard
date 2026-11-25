@@ -32,6 +32,17 @@ func NewDemo(c config.Config) *Demo {
 		}
 		d.states[it.Entity] = ha.State{State: state, Attr: map[string]any{}}
 	}
+	for i, it := range c.Actions {
+		state, attr := "off", map[string]any{}
+		if i == 0 {
+			state = "on"
+			attr["last_triggered"] = time.Now().Add(-150 * time.Second).Format(time.RFC3339)
+		}
+		d.states[it.Entity] = ha.State{State: state, Attr: attr}
+		if strings.HasPrefix(it.Timer, "input_number.") {
+			d.states[it.Timer] = ha.State{State: "10.0", Attr: map[string]any{}}
+		}
+	}
 	for i, it := range c.Windows {
 		state := "off"
 		if strings.HasPrefix(it.Entity, "cover.") {
@@ -40,7 +51,7 @@ func NewDemo(c config.Config) *Demo {
 		if i == 0 {
 			state = map[string]string{"off": "on", "closed": "open"}[state]
 		}
-		d.states[it.Entity] = ha.State{State: state, Attr: map[string]any{}}
+		d.states[it.Entity] = ha.State{State: state, Attr: map[string]any{"device_class": "window"}}
 	}
 	for _, it := range c.Notifications {
 		d.states[it.Entity] = ha.State{State: "on", Attr: map[string]any{}}
@@ -135,6 +146,9 @@ func (d *Demo) Call(_, service, entity string, data map[string]any) error {
 		st.State = "off"
 	case "turn_on":
 		st.State = "on"
+		if domain == "script" {
+			st.Attr["last_triggered"] = time.Now().Format(time.RFC3339)
+		}
 		if domain == "climate" {
 			modes := st.Strings("hvac_modes")
 			if i := slices.IndexFunc(modes, func(m string) bool { return m != "off" }); i >= 0 {

@@ -38,6 +38,16 @@ dall'interfaccia di Home Assistant, senza cavo:
   cover/binary_sensor → finestra o stato, calendar → calendario;
 - i **badge** delle viste diventano le etichette di avviso.
 
+Script, scene e pulsanti diventano pulsanti di avvio (gli script chiedono un
+secondo tocco). Per mostrare il tempo rimanente di uno script con un'attesa,
+aggiungi alla sua scheda, dall'editor YAML:
+
+```yaml
+kobo_timer: input_number.minuti_di_attesa   # oppure un numero di minuti
+```
+
+Il conto parte da quando lo script è stato avviato, anche se non dal Kobo.
+
 Le modifiche arrivano al Kobo appena salvate. Se la dashboard non si può
 leggere, valgono le liste di `dashboard.ini`.
 
