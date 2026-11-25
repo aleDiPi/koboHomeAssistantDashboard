@@ -67,6 +67,8 @@ type Frontlight struct {
 // Power controls standby.
 type Power struct {
 	Standby bool
+	// Saving rests processor and Wi-Fi while on battery.
+	Saving bool
 	// People (or trackers) whose being "home" means somebody can look at it.
 	Presence    []string
 	Idle        time.Duration // without touches before sleeping
@@ -212,6 +214,8 @@ func (c *Config) set(section, key, val string) error {
 		c.TouchMirrorX, err = strconv.ParseBool(val)
 	case "touch.mirror_y":
 		c.TouchMirrorY, err = strconv.ParseBool(val)
+	case "power.saving":
+		c.Power.Saving, err = strconv.ParseBool(val)
 	case "power.report":
 		c.Power.Report, err = strconv.ParseBool(val)
 	case "power.report_on_battery":

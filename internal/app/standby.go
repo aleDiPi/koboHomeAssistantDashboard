@@ -57,6 +57,20 @@ func nap(c config.Power, states map[string]ha.State, plugged bool) time.Duration
 	return c.HomeRefresh
 }
 
+// powerSave follows the cable: on battery processor and Wi-Fi rest.
+func (a *App) powerSave(now time.Time) {
+	if !a.cfg.Power.Saving || now.Sub(a.savingChecked) < reportCheck {
+		return
+	}
+	a.savingChecked = now
+	saving := !a.plugged()
+	if a.saving != nil && *a.saving == saving {
+		return
+	}
+	a.saving = &saving
+	log.Printf("power saving %v: %s", saving, kobo.PowerSave(saving))
+}
+
 // standby sleeps when it is time to. It is called regularly.
 func (a *App) standby(now time.Time) {
 	if a.power == nil || now.Before(a.awakeUntil) || len(a.temps) > 0 || a.armed.Kind != ui.None {
@@ -99,6 +113,7 @@ func (a *App) sleep(asleepAt time.Time, d time.Duration) {
 	slept := time.Now().Round(0).Sub(start)
 	now := asleepAt.Add(slept)
 	a.src.Reconnect()
+	a.saving = nil
 	if err != nil {
 		log.Printf("standby failed: %v", err)
 		a.asleep, a.awakeUntil = false, now.Add(retryAfter)

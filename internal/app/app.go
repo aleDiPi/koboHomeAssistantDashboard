@@ -76,6 +76,8 @@ type App struct {
 	plugged       func() bool
 	reported      time.Time
 	reportChecked time.Time
+	saving        *bool // nil until applied
+	savingChecked time.Time
 	sent          deviceState
 	light         int // frontlight level in use, -1 before the first one
 	battery       int
@@ -157,6 +159,7 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			if a.frame.Countdown && now.Sub(a.rendered) >= ui.CountdownStep {
 				schedule(0)
 			}
+			a.powerSave(now)
 			a.report(now)
 			a.standby(now)
 			if a.flushTemps(now) {

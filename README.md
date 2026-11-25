@@ -76,6 +76,9 @@ Con `standby = true` in `[power]`:
 | In casa, a batteria | dorme; si aggiorna ogni `home_refresh` |
 | Nessuno in casa | dorme; si aggiorna ogni `away_refresh` |
 
+Con `saving = true`, a batteria anche da sveglio il processore usa un regime
+più parsimonioso e il Wi-Fi sonnecchia tra un pacchetto e l'altro.
+
 Dorme dopo `idle` senza tocchi. Mentre dorme il touch non risponde: premi il
 tasto di accensione. Lo schermo mostra "Standby" con l'ora dell'ultimo
 aggiornamento.

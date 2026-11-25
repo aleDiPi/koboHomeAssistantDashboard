@@ -57,3 +57,9 @@ wifi_down() {
         ./kobodash -wifi-power off
     fi
 }
+
+# Lets the radio doze between packets ("on") or not ("off").
+wifi_powersave() {
+    command -v iwconfig > /dev/null || { echo "no iwconfig"; return 1; }
+    iwconfig "${INTERFACE:-eth0}" power "$1"
+}
