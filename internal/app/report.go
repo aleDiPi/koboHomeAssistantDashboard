@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/ha"
+	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/kobo"
 )
 
 const (
@@ -16,6 +17,7 @@ const (
 // deviceState is what is published about the Kobo itself.
 type deviceState struct {
 	battery int
+	voltage float64 // volts, 0 if unknown
 	plugged bool
 	light   int // -1 if the light is not managed
 	asleep  bool
@@ -25,6 +27,8 @@ type deviceState struct {
 // a minute. On battery, to save it: only rarely, plus once when the cable is
 // removed, so that Home Assistant knows.
 func due(now, last time.Time, current, sent deviceState, onBattery time.Duration) bool {
+	// The voltage jitters all the time: it travels with the other reasons.
+	current.voltage, sent.voltage = 0, 0
 	switch {
 	case last.IsZero() || current.plugged != sent.plugged:
 		return true
@@ -56,6 +60,10 @@ func sensors(s deviceState) []ha.Sensor {
 			Attr: attr("Kobo alimentazione", "device_class", "plug")},
 		{Entity: "sensor.kobo_modalita", State: mode, Attr: attr("Kobo modalità", "icon", "mdi:sleep")},
 	}
+	if s.voltage > 0 {
+		out = append(out, ha.Sensor{Entity: "sensor.kobo_tensione_batteria", State: strconv.FormatFloat(s.voltage, 'f', 2, 64),
+			Attr: attr("Kobo tensione batteria", "unit_of_measurement", "V", "device_class", "voltage", "state_class", "measurement")})
+	}
 	if s.light >= 0 {
 		out = append(out, ha.Sensor{Entity: "sensor.kobo_luce", State: strconv.Itoa(s.light),
 			Attr: attr("Kobo luce schermo", "unit_of_measurement", "%", "icon", "mdi:brightness-6")})
@@ -74,7 +82,7 @@ func (a *App) report(now time.Time) {
 	if !connected || battery < 0 { // no battery: not running on the device
 		return
 	}
-	current := deviceState{battery: battery, plugged: a.plugged(), light: a.light, asleep: a.asleep}
+	current := deviceState{battery: battery, voltage: kobo.Voltage(), plugged: a.plugged(), light: a.light, asleep: a.asleep}
 	if !a.cfg.Frontlight.Manage {
 		current.light = -1
 	}

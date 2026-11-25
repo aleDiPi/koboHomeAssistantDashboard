@@ -97,6 +97,9 @@ func (a *App) EnableStandby(button <-chan struct{}) {
 
 // Run serves taps and updates until the user taps "Esci" twice or ctx ends.
 func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
+	for _, line := range kobo.PowerInfo() {
+		log.Printf("power supply: %s", line)
+	}
 	a.battery = kobo.Battery()
 	a.lastTouch = time.Now()
 	a.awakeUntil = a.lastTouch.Add(startGrace)
@@ -150,7 +153,7 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 				// A record of the drain, to size the power supply.
 				a.batteryLog = now
 				if level := kobo.Battery(); level >= 0 {
-					log.Printf("battery %d%% %s", level, kobo.BatteryStatus())
+					log.Printf("battery %d%% %.2fV %s", level, kobo.Voltage(), kobo.BatteryStatus())
 				}
 			}
 			if a.returnHome(now) {

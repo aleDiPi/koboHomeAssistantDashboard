@@ -87,7 +87,8 @@ aggiornamento.
 
 Con `report = true` compaiono `sensor.kobo_batteria`,
 `binary_sensor.kobo_alimentazione`, `sensor.kobo_modalita` e
-`sensor.kobo_luce`. Alimentato li aggiorna a ogni cambiamento (almeno ogni
+`sensor.kobo_luce`, più `sensor.kobo_tensione_batteria` se il dispositivo la
+fornisce. Alimentato li aggiorna a ogni cambiamento (almeno ogni
 minuto); a batteria solo ogni `report_on_battery`. Dopo un riavvio di Home
 Assistant ricompaiono al primo invio.
 

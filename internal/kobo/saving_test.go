@@ -14,3 +14,11 @@ func TestGovernor(t *testing.T) {
 		t.Errorf("nothing frugal: %s", g)
 	}
 }
+
+func TestVolts(t *testing.T) {
+	for raw, want := range map[string]float64{"4012000" + string(rune(10)): 4.012, "3950": 3.95, "x": 0} {
+		if got := volts(raw); got != want {
+			t.Errorf("volts(%q) = %v", raw, got)
+		}
+	}
+}
