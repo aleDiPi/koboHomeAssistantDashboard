@@ -7,6 +7,7 @@ import (
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/config"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/ha"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/kobo"
+	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/screen"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/ui"
 )
 
@@ -15,12 +16,15 @@ type Power interface {
 	Plugged() bool
 	// Suspend returns when the device is awake again.
 	Suspend(time.Duration) error
+	// Resume restores what Suspend took down.
+	Resume() error
 }
 
 type device struct{}
 
 func (device) Plugged() bool                 { return kobo.Plugged() }
 func (device) Suspend(d time.Duration) error { return kobo.Suspend(d) }
+func (device) Resume() error                 { return kobo.Resume() }
 
 const (
 	// After a timed wake: how long to wait for Home Assistant, and then for
@@ -84,6 +88,9 @@ func (a *App) standby(now time.Time) {
 		}
 		// Fresh data (or none to be had): show it, and give it time to land.
 		a.waking = false
+		if !connected {
+			log.Print("standby: no connection after waking")
+		}
 		a.render(false)
 		a.awakeUntil = now.Add(glance)
 		return
@@ -97,7 +104,7 @@ func (a *App) standby(now time.Time) {
 }
 
 func (a *App) sleep(asleepAt time.Time, d time.Duration) {
-	// The screen keeps showing this while the device sleeps.
+	// The screensaver stays on the panel while the device sleeps.
 	a.asleep, a.view, a.page = true, ui.Home, 0
 	a.render(false)
 	if a.cfg.Frontlight.Manage {
@@ -113,19 +120,34 @@ func (a *App) sleep(asleepAt time.Time, d time.Duration) {
 	err := a.power.Suspend(d)
 	slept := time.Now().Round(0).Sub(start)
 	now := asleepAt.Add(slept)
+	// Waking well before the alarm means somebody pressed the button: say at
+	// once that it was heard, as Wi-Fi takes a while.
+	button := err == nil && slept < d-10*time.Second
+	if button {
+		a.showWaking()
+	}
+	if e := a.power.Resume(); e != nil {
+		log.Printf("standby: %v", e)
+	}
 	a.src.Reconnect()
 	a.saving = nil
 	if err != nil {
 		log.Printf("standby failed: %v", err)
 		a.asleep, a.awakeUntil = false, now.Add(retryAfter)
+		a.render(true)
 		return
 	}
-	log.Printf("awake after %v", slept.Round(time.Second))
+	log.Printf("awake after %v, button %v", slept.Round(time.Second), button)
 	a.waking, a.wakeLimit = true, now.Add(connectLimit)
-	// Waking well before the alarm means somebody pressed the button.
-	if slept < d-10*time.Second {
+	if button {
 		a.userWake(now)
 	}
+}
+
+func (a *App) showWaking() {
+	w, h := a.disp.Size()
+	a.frame = ui.RenderWaking(w, h)
+	a.show(a.frame.Image.Rect, screen.Flash)
 }
 
 // userWake keeps the device awake as after a touch.

@@ -11,28 +11,55 @@ wifi_up() {
     modules=/drivers/${PLATFORM:-ntx508}/wifi
     if ! grep -q "^sdio_wifi_pwr " /proc/modules; then
         if [ -e "$modules/sdio_wifi_pwr.ko" ]; then
-            insmod "$modules/sdio_wifi_pwr.ko"
+            insmod "$modules/sdio_wifi_pwr.ko" && echo "power module loaded"
         else
             ./kobodash -wifi-power on
         fi
     fi
     sleep 1
     if [ -n "$WIFI_MODULE" ] && ! grep -q "^$WIFI_MODULE " /proc/modules; then
-        insmod "$modules/$WIFI_MODULE.ko"
+        insmod "$modules/$WIFI_MODULE.ko" && echo "driver loaded"
     fi
-    sleep 1
+    wait_for 10 test -e "/sys/class/net/$interface" || echo "no $interface"
     ifconfig "$interface" up
 
     conf=/etc/wpa_supplicant/wpa_supplicant.conf
     [ -f /mnt/onboard/.kobo/wpa_supplicant.conf ] && conf=/mnt/onboard/.kobo/wpa_supplicant.conf
-    pidof wpa_supplicant > /dev/null ||
-        wpa_supplicant -D wext -i "$interface" -c "$conf" -C /var/run/wpa_supplicant -B
-    sleep 3
+    # A supplicant left over from before would be tied to the old interface.
+    killall -q wpa_supplicant
+    sleep 1
+    wpa_supplicant -D wext -i "$interface" -c "$conf" -C /var/run/wpa_supplicant -B
+    wait_for 20 associated || echo "not associated"
+
+    killall -q udhcpc dhcpcd
+    sleep 1
     if [ -x /sbin/dhcpcd ]; then
-        dhcpcd -d -t 30 -w "$interface"
+        dhcpcd -t 30 -w "$interface"
     else
-        udhcpc -S -i "$interface" -s /etc/udhcpc.d/default.script -b -q
+        udhcpc -S -i "$interface" -s /etc/udhcpc.d/default.script -t 15 -b -q
     fi
+    if wait_for 15 grep -q "^$interface[[:space:]]*00000000" /proc/net/route; then
+        echo "connected"
+    else
+        echo "no route"
+        wpa_cli -i "$interface" status
+        return 1
+    fi
+}
+
+# wait_for SECONDS COMMAND...: retries the command once a second.
+wait_for() {
+    tries=$1
+    shift
+    until "$@" > /dev/null 2>&1; do
+        tries=$((tries - 1))
+        [ "$tries" -gt 0 ] || return 1
+        sleep 1
+    done
+}
+
+associated() {
+    wpa_cli -i "${INTERFACE:-eth0}" status | grep -q "^wpa_state=COMPLETED"
 }
 
 # Takes Wi-Fi down completely before a suspend. Refuses (and so cancels the
@@ -46,6 +73,7 @@ wifi_down() {
     fi
     killall -q udhcpc default.script dhcpcd
     wpa_cli -i "$interface" terminate
+    killall -q wpa_supplicant
     ifconfig "$interface" down
     sleep 1
     if grep -q "^$WIFI_MODULE " /proc/modules; then
@@ -56,6 +84,7 @@ wifi_down() {
     else
         ./kobodash -wifi-power off
     fi
+    echo "down"
 }
 
 # Lets the radio doze between packets ("on") or not ("off").

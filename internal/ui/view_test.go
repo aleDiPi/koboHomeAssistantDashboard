@@ -137,3 +137,11 @@ func TestCountdown(t *testing.T) {
 		t.Errorf("fixed minutes: %v", d)
 	}
 }
+
+func TestSpecialScreensHaveNothingToTap(t *testing.T) {
+	for _, f := range []Frame{RenderSleep(Model{Battery: 50}, 1024, 758), RenderWaking(1024, 758)} {
+		if f.View >= 0 || len(f.Regions) != 0 {
+			t.Errorf("view %d, %d regions", f.View, len(f.Regions))
+		}
+	}
+}

@@ -70,8 +70,6 @@ type Model struct {
 	Pending map[string]float64
 	// Armed is the action waiting for a confirming second touch.
 	Armed Action
-	// Standby marks the picture that stays while the device sleeps.
-	Standby bool
 	Battery int // percent, negative if unknown
 }
 
@@ -330,11 +328,7 @@ func drawHeader(f *Frame, m Model, w int) {
 		card(img, image.Rect(status.Min.X, 14, status.Max.X, headerHeight-12), 22, 0, black, black)
 		text(img, face(true, 22), msg, status.Inset(10), mid, center, white)
 	} else {
-		labels := notices(m)
-		if m.Standby {
-			labels = append([]string{"Standby " + m.Now.Format("15:04") + " · tasto"}, labels...)
-		}
-		drawChips(img, status, labels)
+		drawChips(img, status, notices(m))
 	}
 	f.region(status, 0, Action{})
 }

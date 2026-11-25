@@ -14,6 +14,7 @@ type fakePower struct {
 	plugged bool
 	naps    []time.Duration
 	err     error
+	resumed int
 }
 
 func (f *fakePower) Plugged() bool { return f.plugged }
@@ -21,6 +22,8 @@ func (f *fakePower) Suspend(d time.Duration) error {
 	f.naps = append(f.naps, d)
 	return f.err
 }
+
+func (f *fakePower) Resume() error { f.resumed++; return nil }
 
 func TestNapDependsOnPresenceAndPower(t *testing.T) {
 	c := config.Default().Power
@@ -64,6 +67,9 @@ func TestSleepsOnlyWhenIdle(t *testing.T) {
 	a.standby(now.Add(a.cfg.Power.Idle + time.Second))
 	if len(power.naps) != 1 || power.naps[0] != a.cfg.Power.HomeRefresh {
 		t.Fatalf("naps %v", power.naps)
+	}
+	if power.resumed != 1 {
+		t.Fatal("Wi-Fi not restored")
 	}
 	// The fake returns at once: that is a wake by the button, so stay awake.
 	a.standby(time.Now())

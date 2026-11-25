@@ -121,6 +121,7 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 	for {
 		select {
 		case <-ctx.Done():
+			log.Printf("closing: %v", context.Cause(ctx))
 			return ctx.Err()
 		case <-a.src.Updates():
 			schedule(settleDelay)
@@ -132,15 +133,19 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 				a.render(false)
 			}
 		case <-a.buttons:
+			log.Print("power button")
 			a.userWake(time.Now())
-			schedule(0)
+			// A flash answers the press even if nothing else changed.
+			a.render(true)
 		case p, ok := <-taps:
 			if !ok {
 				return errors.New("touch input lost")
 			}
 			a.userWake(time.Now())
+			log.Printf("tap %v", p)
 			exit, delay := a.tap(p)
 			if exit {
+				log.Print("closed with Esci")
 				return nil
 			}
 			if delay >= 0 {
@@ -191,8 +196,8 @@ func (a *App) model() ui.Model {
 	m := ui.Model{
 		Layout: a.src.Layout(), States: states, Connected: connected,
 		Now: a.now(), View: a.view, Page: a.page, Pending: map[string]float64{},
-		Armed:   a.armed,
-		Standby: a.asleep,
+		Armed: a.armed,
+
 		History: a.src.History(), Battery: a.battery, Events: a.src.Events(),
 	}
 	switch {
@@ -217,9 +222,18 @@ func (a *App) model() ui.Model {
 func (a *App) render(flash bool) {
 	w, h := a.disp.Size()
 	old := a.frame
-	next := ui.Render(a.model(), w, h)
+	model := a.model()
+	var next ui.Frame
+	if a.asleep {
+		next = ui.RenderSleep(model, w, h)
+	} else {
+		next = ui.Render(model, w, h)
+	}
 	a.rendered = time.Now()
-	a.frame, a.view, a.page = next, next.View, next.Page
+	a.frame = next
+	if next.View >= 0 {
+		a.view, a.page = next.View, next.Page
+	}
 
 	var changed []image.Rectangle
 	if old.Image == nil || old.View != next.View || old.Page != next.Page || a.partials >= maxPartials {
