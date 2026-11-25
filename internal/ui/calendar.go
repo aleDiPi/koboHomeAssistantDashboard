@@ -195,7 +195,8 @@ func drawAgenda(img *image.Gray, m Model, names map[string]string, r image.Recta
 			break
 		}
 		line := when(e, m.Now)
-		if name := names[e.Calendar]; name != "" {
+		// With a single calendar its name would only repeat on every row.
+		if name := names[e.Calendar]; name != "" && len(names) > 1 {
 			line += " · " + name
 		}
 		fill(img, image.Rect(inner.Min.X, y+8, inner.Min.X+5, y+rowH-8), black)
