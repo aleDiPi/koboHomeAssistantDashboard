@@ -76,6 +76,9 @@ func drawAction(f *Frame, m Model, b block, name string, st ha.State, available 
 	box := image.Rect(r.Min.X+84, r.Min.Y, r.Max.X-18, r.Max.Y)
 	mid := (r.Min.Y + r.Max.Y) / 2
 	sub := "tocca per avviare"
+	if script {
+		sub = "premi due volte"
+	}
 	total, timed := duration(m, b.item.Timer)
 	if timed {
 		sub += " · " + strconv.FormatFloat(total.Minutes(), 'f', -1, 64) + " min"
@@ -85,7 +88,7 @@ func drawAction(f *Frame, m Model, b block, name string, st ha.State, available 
 	case !available:
 		sub = "non disponibile"
 	case armed:
-		sub = "tocca di nuovo per confermare"
+		sub = "premi ancora per confermare"
 	case counting && rest > 0:
 		sub = "in corso, mancano"
 	case running:
