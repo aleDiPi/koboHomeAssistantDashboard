@@ -88,6 +88,9 @@ func (a *App) standby(now time.Time) {
 		}
 		// Fresh data (or none to be had): show it, and give it time to land.
 		a.waking = false
+		if a.asleep {
+			a.pickPicture() // the day may have changed
+		}
 		if !connected {
 			log.Print("standby: no connection after waking")
 		}
@@ -106,6 +109,7 @@ func (a *App) standby(now time.Time) {
 func (a *App) sleep(asleepAt time.Time, d time.Duration) {
 	// The screensaver stays on the panel while the device sleeps.
 	a.asleep, a.view, a.page = true, ui.Home, 0
+	a.pickPicture()
 	a.render(false)
 	if a.cfg.Frontlight.Manage {
 		a.light = 0

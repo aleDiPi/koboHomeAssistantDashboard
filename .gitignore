@@ -3,6 +3,7 @@ dashboard.ini
 # build output and local toolchain
 /dist/
 /standby.*
+/standby/
 /.tools/
 *.log
 

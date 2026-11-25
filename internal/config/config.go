@@ -83,8 +83,8 @@ type Power struct {
 
 // Screensaver is what the standby screen shows.
 type Screensaver struct {
-	// Picture is a PNG or JPEG file; relative paths start from the folder of
-	// the configuration file.
+	// Picture is a PNG or JPEG file, or a folder of them taking turns day by
+	// day; relative paths start from the folder of the configuration file.
 	Picture string
 	// Focus chooses what survives the crop: 0 left or top, 1 right or bottom.
 	Focus   float64

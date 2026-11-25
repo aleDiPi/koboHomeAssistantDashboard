@@ -98,7 +98,7 @@ func run() error {
 		if !filepath.IsAbs(picture) {
 			picture = filepath.Join(filepath.Dir(*cfgPath), picture)
 		}
-		dashboard.SetPicture(picture)
+		dashboard.SetPictures(picture)
 	}
 	if button != nil {
 		dashboard.EnableStandby(button)
