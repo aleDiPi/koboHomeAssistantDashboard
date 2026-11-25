@@ -79,7 +79,7 @@ Con `standby = true` in `[power]`:
 Con `saving = true`, a batteria anche da sveglio il processore usa un regime
 più parsimonioso e il Wi-Fi sonnecchia tra un pacchetto e l'altro.
 
-Mentre dorme mostra l'immagine indicata in `[standby]` (PNG o JPEG, meglio
+Mentre dorme mostra, ritagliata a tutto schermo, l'immagine indicata in `[standby]` (PNG o JPEG, meglio
 orizzontale e contrastata) con la temperatura della sala e quella esterna; alla
 pressione del tasto compare subito "Mi sto riattivando…".
 

@@ -18,16 +18,39 @@ func blank(w, h int) Frame {
 	return Frame{Image: img, View: special, Pages: 1}
 }
 
-// reading is a temperature for the standby screen, or "" if not configured.
-func reading(m Model, entity, label string) string {
-	if entity == "" {
-		return ""
-	}
-	value := "--"
+// reading is a temperature for the standby screen.
+func reading(m Model, entity string) string {
 	if v, err := strconv.ParseFloat(m.States[entity].State, 64); err == nil {
-		value = number(v) + "°"
+		return number(v) + "°"
 	}
-	return label + " " + value
+	return "--"
+}
+
+// temperatures draws the readings side by side, alike, in one box in the top
+// right corner.
+func temperatures(img *image.Gray, m Model, w int) {
+	type column struct{ label, entity string }
+	var columns []column
+	for _, c := range []column{{"Sala", m.Config.Indoor}, {"Fuori", m.Config.Outdoor}} {
+		if c.entity != "" {
+			columns = append(columns, c)
+		}
+	}
+	if len(columns) == 0 {
+		return
+	}
+	const width, height, edge = 132, 82, 16
+	box := image.Rect(w-edge-width*len(columns), edge, w-edge, edge+height)
+	card(img, box, 20, 2, white, black)
+	for i, c := range columns {
+		x := box.Min.X + i*width
+		cell := image.Rect(x+6, box.Min.Y, x+width-6, box.Max.Y)
+		text(img, face(false, 20), c.label, cell, box.Min.Y+20, center, darkGray)
+		text(img, face(true, 36), reading(m, c.entity), cell, box.Min.Y+54, center, black)
+		if i > 0 {
+			fill(img, image.Rect(x, box.Min.Y+14, x+2, box.Max.Y-14), midGray)
+		}
+	}
 }
 
 // tag writes s on a white pill, so that it reads over any picture.
@@ -50,8 +73,6 @@ func tag(img *image.Gray, s string, size, x, y int, a align) {
 func RenderSleep(m Model, w, h int) Frame {
 	f := blank(w, h)
 	img := f.Image
-	indoor := reading(m, m.Config.Indoor, "Sala")
-	outdoor := reading(m, m.Config.Outdoor, "Fuori")
 
 	if p := m.Picture; p != nil {
 		at := image.Pt((w-p.Rect.Dx())/2, (h-p.Rect.Dy())/2)
@@ -61,12 +82,7 @@ func RenderSleep(m Model, w, h int) Frame {
 		text(img, face(true, 54), "In standby", img.Rect, h*55/100, center, black)
 	}
 
-	if indoor != "" {
-		tag(img, indoor, 34, 16, 16, left)
-	}
-	if outdoor != "" {
-		tag(img, outdoor, 26, w-16, 16, right)
-	}
+	temperatures(img, m, w)
 	// Alerts, such as an open window, only while there is one.
 	if labels := notices(m); len(labels) > 0 {
 		tag(img, strings.Join(labels, " · "), 22, w/2, h-96, center)

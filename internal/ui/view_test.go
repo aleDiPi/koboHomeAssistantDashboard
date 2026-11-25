@@ -151,7 +151,7 @@ func TestPictureFitsAndUsesSixteenGrays(t *testing.T) {
 	for i := range src.Pix {
 		src.Pix[i] = uint8(60 + i%400*120/400) // a washed out gradient
 	}
-	got := prepare(src, 200, 200)
+	got := prepare(src, 200, 50, 0.5)
 	if got.Rect.Dx() != 200 || got.Rect.Dy() != 50 {
 		t.Fatalf("size %v", got.Rect)
 	}
@@ -164,5 +164,18 @@ func TestPictureFitsAndUsesSixteenGrays(t *testing.T) {
 	}
 	if low != 0 || high != 255 {
 		t.Errorf("contrast not stretched: %d-%d", low, high)
+	}
+}
+
+func TestCrop(t *testing.T) {
+	wide := image.Rect(0, 0, 300, 100)
+	for focus, want := range map[float64]image.Rectangle{
+		0:   image.Rect(0, 0, 100, 100),
+		0.5: image.Rect(100, 0, 200, 100),
+		1:   image.Rect(200, 0, 300, 100),
+	} {
+		if got := crop(wide, 50, 50, focus); got != want {
+			t.Errorf("focus %v: %v", focus, got)
+		}
 	}
 }

@@ -12,9 +12,9 @@ import (
 // maxPicture guards the little memory of the device.
 const maxPicture = 20_000_000 // pixels
 
-// LoadPicture reads a picture and prepares it for a w×h e-ink panel: scaled to
-// fit, in gray, with the contrast stretched and dithered to 16 levels.
-func LoadPicture(path string, w, h int) (*image.Gray, error) {
+// LoadPicture reads a picture and prepares it for a w×h e-ink panel: cropped
+// and scaled to fill it, in gray, with the contrast stretched and dithered to 16 levels.
+func LoadPicture(path string, w, h int, focus float64) (*image.Gray, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -34,18 +34,24 @@ func LoadPicture(path string, w, h int) (*image.Gray, error) {
 	if err != nil {
 		return nil, err
 	}
-	return prepare(src, w, h), nil
+	return prepare(src, w, h, focus), nil
 }
 
-func prepare(src image.Image, w, h int) *image.Gray {
-	b := src.Bounds()
-	// The whole picture, as large as it fits: artworks are not cropped.
-	pw, ph := w, b.Dy()*w/b.Dx()
-	if ph > h {
-		pw, ph = b.Dx()*h/b.Dy(), h
+// crop returns the largest part of b with the proportions of w×h. focus says
+// what to keep of the excess: 0 the left (or top) side, 1 the right (bottom).
+func crop(b image.Rectangle, w, h int, focus float64) image.Rectangle {
+	cw, ch := b.Dx(), b.Dx()*h/w
+	if ch > b.Dy() {
+		cw, ch = b.Dy()*w/h, b.Dy()
 	}
-	pic := image.NewGray(image.Rect(0, 0, max(pw, 1), max(ph, 1)))
-	draw.CatmullRom.Scale(pic, pic.Rect, src, b, draw.Src, nil)
+	x := b.Min.X + int(float64(b.Dx()-cw)*focus+0.5)
+	y := b.Min.Y + int(float64(b.Dy()-ch)*focus+0.5)
+	return image.Rect(x, y, x+cw, y+ch)
+}
+
+func prepare(src image.Image, w, h int, focus float64) *image.Gray {
+	pic := image.NewGray(image.Rect(0, 0, w, h))
+	draw.CatmullRom.Scale(pic, pic.Rect, src, crop(src.Bounds(), w, h, focus), draw.Src, nil)
 	stretch(pic)
 	dither(pic)
 	return pic

@@ -94,7 +94,7 @@ func New(cfg config.Config, src Source, disp screen.Display, loc *time.Location)
 // cannot be read, a plain notice is shown.
 func (a *App) SetPicture(path string) {
 	w, h := a.disp.Size()
-	picture, err := ui.LoadPicture(path, w, h)
+	picture, err := ui.LoadPicture(path, w, h, a.cfg.Screensaver.Focus)
 	if err != nil {
 		log.Printf("standby picture: %v", err)
 		return

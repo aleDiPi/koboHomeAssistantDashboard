@@ -86,6 +86,8 @@ type Screensaver struct {
 	// Picture is a PNG or JPEG file; relative paths start from the folder of
 	// the configuration file.
 	Picture string
+	// Focus chooses what survives the crop: 0 left or top, 1 right or bottom.
+	Focus   float64
 	Indoor  string // temperature sensor of the living room
 	Outdoor string
 }
@@ -103,6 +105,7 @@ func Default() Config {
 		TouchSwapXY:      true,
 		TouchMirrorX:     true,
 		Power:            Power{Idle: 2 * time.Minute, HomeRefresh: 5 * time.Minute, AwayRefresh: 15 * time.Minute, ReportOnBattery: 15 * time.Minute},
+		Screensaver:      Screensaver{Focus: 0.5},
 		Frontlight: Frontlight{
 			Manage: true, NightLevel: 1, TouchLevel: 15,
 			TouchTime: 30 * time.Second, Sun: "sun.sun",
@@ -232,6 +235,11 @@ func (c *Config) set(section, key, val string) error {
 		c.Power.ReportOnBattery, err = time.ParseDuration(val)
 	case "standby.picture":
 		c.Screensaver.Picture = val
+	case "standby.focus":
+		c.Screensaver.Focus, err = strconv.ParseFloat(val, 64)
+		if err == nil && !(c.Screensaver.Focus >= 0 && c.Screensaver.Focus <= 1) {
+			err = fmt.Errorf("focus must be between 0 and 1")
+		}
 	case "standby.indoor":
 		c.Screensaver.Indoor = val
 	case "standby.outdoor":
