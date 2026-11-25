@@ -32,9 +32,22 @@ type Config struct {
 	TouchMirrorX bool
 	TouchMirrorY bool
 
+	Frontlight Frontlight
+
 	Sensors []Item
 	Lights  []Item
 	Climate []Item
+}
+
+// Frontlight controls the screen light.
+type Frontlight struct {
+	Manage     bool // false leaves the light as the Kobo had it
+	NightLevel int  // after sunset, with every NightWhenOff light off
+	TouchLevel int  // after sunset, for TouchTime after a touch
+	TouchTime  time.Duration
+	// Lights that make the screen light unnecessary when any of them is on.
+	NightWhenOff []string
+	Sun          string
 }
 
 // Default returns the settings that match a Kobo Glo (N613).
@@ -48,6 +61,10 @@ func Default() Config {
 		TouchDevice:      "/dev/input/event1",
 		TouchSwapXY:      true,
 		TouchMirrorX:     true,
+		Frontlight: Frontlight{
+			Manage: true, NightLevel: 1, TouchLevel: 15,
+			TouchTime: 30 * time.Second, Sun: "sun.sun",
+		},
 	}
 }
 
@@ -60,6 +77,15 @@ func (c Config) Entities() []string {
 			if !seen[it.Entity] {
 				seen[it.Entity] = true
 				out = append(out, it.Entity)
+			}
+		}
+	}
+	// Entities only watched to decide the screen light.
+	if c.Frontlight.Manage {
+		for _, id := range append([]string{c.Frontlight.Sun}, c.Frontlight.NightWhenOff...) {
+			if id != "" && !seen[id] {
+				seen[id] = true
+				out = append(out, id)
 			}
 		}
 	}
@@ -88,7 +114,7 @@ func Parse(r io.Reader) (Config, error) {
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section = strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
 			switch section {
-			case "homeassistant", "display", "touch", "sensors", "lights", "climate":
+			case "homeassistant", "display", "touch", "frontlight", "sensors", "lights", "climate":
 			default:
 				return c, fmt.Errorf("line %d: unknown section [%s]", n, section)
 			}
@@ -159,8 +185,28 @@ func (c *Config) set(section, key, val string) error {
 		c.TouchMirrorX, err = strconv.ParseBool(val)
 	case "touch.mirror_y":
 		c.TouchMirrorY, err = strconv.ParseBool(val)
+	case "frontlight.manage":
+		c.Frontlight.Manage, err = strconv.ParseBool(val)
+	case "frontlight.night_level":
+		c.Frontlight.NightLevel, err = percent(val)
+	case "frontlight.touch_level":
+		c.Frontlight.TouchLevel, err = percent(val)
+	case "frontlight.touch_time":
+		c.Frontlight.TouchTime, err = time.ParseDuration(val)
+	case "frontlight.night_when_off":
+		c.Frontlight.NightWhenOff = strings.Fields(strings.ReplaceAll(val, ",", " "))
+	case "frontlight.sun":
+		c.Frontlight.Sun = val
 	default:
 		return fmt.Errorf("unknown setting %q in [%s]", key, section)
 	}
 	return err
+}
+
+func percent(val string) (int, error) {
+	v, err := strconv.Atoi(val)
+	if err == nil && (v < 0 || v > 100) {
+		err = fmt.Errorf("%d is not between 0 and 100", v)
+	}
+	return v, err
 }

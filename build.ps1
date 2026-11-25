@@ -19,4 +19,7 @@ try {
 } finally {
     Remove-Item Env:GOOS, Env:GOARCH, Env:GOARM, Env:CGO_ENABLED
 }
+# Boot hook for autostart (see the README).
+& $go run ./tools/koboroot -o dist\KoboRoot.tgz
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Get-Item dist\kobodash | Select-Object Name, Length

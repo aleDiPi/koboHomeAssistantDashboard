@@ -17,6 +17,7 @@ import (
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/app"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/config"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/ha"
+	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/kobo"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/screen"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/sim"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/touch"
@@ -35,7 +36,12 @@ func run() error {
 	demo := flag.Bool("demo", false, "use fake data instead of Home Assistant")
 	trace := flag.Bool("touchtest", false, "log every raw touch event")
 	maxRuntime := flag.Duration("max-runtime", 0, "close after this time (0 = never)")
+	wifiPower := flag.String("wifi-power", "", "switch the Wi-Fi chip on or off, then exit")
 	flag.Parse()
+
+	if *wifiPower != "" {
+		return kobo.SetWifiPower(*wifiPower == "on")
+	}
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
@@ -62,6 +68,9 @@ func run() error {
 			return errors.New("no token: set it in [homeassistant] of " + *cfgPath)
 		}
 		client := ha.NewClient(cfg.URL, cfg.Token, cfg.Entities())
+		for _, it := range cfg.Sensors {
+			client.Graphed = append(client.Graphed, it.Entity)
+		}
 		go client.Run(ctx)
 		src = client
 	}

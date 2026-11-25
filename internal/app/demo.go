@@ -1,9 +1,12 @@
 package app
 
 import (
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/config"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/ha"
@@ -52,6 +55,25 @@ func (d *Demo) Snapshot() (map[string]ha.State, bool, error) {
 }
 
 func (d *Demo) Updates() <-chan struct{} { return d.updates }
+
+// History invents a daily temperature curve for each sensor.
+func (d *Demo) History() map[string][]ha.Point {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	out := map[string][]ha.Point{}
+	now := time.Now()
+	for id, st := range d.states {
+		if !strings.HasPrefix(id, "sensor.") {
+			continue
+		}
+		base, _ := strconv.ParseFloat(st.State, 64)
+		for h := 24; h > 0; h-- {
+			v := base + 1.5*math.Sin(float64(h)/4)
+			out[id] = append(out[id], ha.Point{Time: now.Add(-time.Duration(h) * time.Hour), Value: v})
+		}
+	}
+	return out
+}
 
 func (d *Demo) Call(_, service, entity string, data map[string]any) error {
 	d.mu.Lock()

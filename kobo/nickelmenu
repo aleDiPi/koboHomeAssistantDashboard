@@ -1,2 +1,1 @@
 menu_item :main :Dashboard casa :cmd_spawn :quiet:/bin/sh /mnt/onboard/.adds/kobodash/start.sh
-menu_item :main :Dashboard (prova 2 min) :cmd_spawn :quiet:/bin/sh /mnt/onboard/.adds/kobodash/start.sh test

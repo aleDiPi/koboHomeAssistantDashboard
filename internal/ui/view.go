@@ -4,6 +4,8 @@ package ui
 import (
 	"fmt"
 	"image"
+	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +36,7 @@ type Action struct {
 // Region is one independently refreshed area of the screen.
 type Region struct {
 	Rect   image.Rectangle
+	Radius int    // corner radius of the shape drawn there
 	Action Action // Kind None for areas that cannot be tapped
 }
 
@@ -41,6 +44,7 @@ type Region struct {
 type Model struct {
 	Config    config.Config
 	States    map[string]ha.State
+	History   map[string][]ha.Point
 	Connected bool
 	Status    string // shown while disconnected
 	Now       time.Time
@@ -48,6 +52,7 @@ type Model struct {
 	// Target temperatures chosen by the user and not yet confirmed.
 	Pending   map[string]float64
 	ExitArmed bool
+	Battery   int // percent, negative if unknown
 }
 
 type Frame struct {
@@ -60,11 +65,11 @@ type Frame struct {
 const (
 	margin       = 8
 	gap          = 8
-	headerHeight = 72
-	sensorHeight = 112
-	lightHeight  = 104
-	infoHeight   = 76
-	buttonHeight = 88
+	headerHeight = 70
+	sensorHeight = 168
+	lightHeight  = 96
+	climateH     = 164
+	radius       = 18
 )
 
 type blockKind int
@@ -86,7 +91,7 @@ type block struct {
 func layout(c config.Config, w, h int) (blocks []block, pages int) {
 	sensorCols, lightCols, climateCols := 4, 3, 1
 	if w > h {
-		sensorCols, lightCols, climateCols = 5, 4, 2
+		lightCols, climateCols = 4, 2
 	}
 	top := headerHeight + gap
 	y, page := top, 0
@@ -105,7 +110,7 @@ func layout(c config.Config, w, h int) (blocks []block, pages int) {
 	}
 	section(sensorBlock, c.Sensors, sensorCols, sensorHeight)
 	section(lightBlock, c.Lights, lightCols, lightHeight)
-	section(climateBlock, c.Climate, climateCols, infoHeight+buttonHeight)
+	section(climateBlock, c.Climate, climateCols, climateH)
 	return blocks, page + 1
 }
 
@@ -133,7 +138,7 @@ func Render(m Model, w, h int) Frame {
 		}
 		switch b.kind {
 		case sensorBlock:
-			drawSensor(&f, b, name, st, available)
+			drawSensor(&f, m, b, name, st, available)
 		case lightBlock:
 			drawLight(&f, b, name, st, available)
 		case climateBlock:
@@ -143,42 +148,76 @@ func Render(m Model, w, h int) Frame {
 	return f
 }
 
+func (f *Frame) region(r image.Rectangle, rad int, a Action) {
+	f.Regions = append(f.Regions, Region{Rect: r, Radius: rad, Action: a})
+}
+
+var (
+	weekdays = [...]string{"domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"}
+	months   = [...]string{"gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+		"luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"}
+)
+
 func drawHeader(f *Frame, m Model, w int) {
 	img := f.Image
-	const buttonW = 120
-	clock := image.Rect(margin, 0, 200, headerHeight-2)
-	text(img, face(true, 46), m.Now.Format("15:04"), clock, headerHeight/2, left, black)
-	f.Regions = append(f.Regions, Region{Rect: clock})
+	mid := headerHeight / 2
 
-	exit := image.Rect(w-margin-buttonW, 6, w-margin, headerHeight-8)
-	statusRight := exit.Min.X - gap
+	clock := image.Rect(margin+4, 0, 150, headerHeight)
+	text(img, face(true, 44), m.Now.Format("15:04"), clock, mid, left, black)
+	f.region(clock, 0, Action{})
+
+	date := image.Rect(clock.Max.X+8, 0, clock.Max.X+248, headerHeight)
+	day := fmt.Sprintf("%s %d %s", weekdays[m.Now.Weekday()], m.Now.Day(), months[m.Now.Month()-1])
+	text(img, face(false, 22), day, date, mid, left, darkGray)
+	f.region(date, 0, Action{})
+
+	exit := image.Rect(w-margin-112, 8, w-margin, headerHeight-6)
 	label := "Esci"
 	if m.ExitArmed {
 		label = "Sicuro?"
 	}
-	button(f, exit, label, m.ExitArmed, true, Action{Kind: Exit})
-
+	pill(f, exit, label, m.ExitArmed, true, Action{Kind: Exit})
+	edge := exit.Min.X - gap
 	if f.Pages > 1 {
-		next := exit.Sub(image.Pt(buttonW+gap, 0))
-		button(f, next, fmt.Sprintf("Pag %d/%d", f.Page+1, f.Pages), false, true, Action{Kind: NextPage})
-		statusRight = next.Min.X - gap
+		next := exit.Sub(image.Pt(exit.Dx()+gap, 0))
+		pill(f, next, fmt.Sprintf("Pag %d/%d", f.Page+1, f.Pages), false, true, Action{Kind: NextPage})
+		edge = next.Min.X - gap
 	}
 
-	status := image.Rect(clock.Max.X, 0, statusRight, headerHeight-2)
-	msg, col := "Home Assistant", darkGray
+	if m.Battery >= 0 {
+		battery := image.Rect(edge-110, 0, edge, headerHeight)
+		drawBattery(img, image.Rect(battery.Min.X, mid-9, battery.Min.X+34, mid+9), m.Battery)
+		text(img, face(false, 22), fmt.Sprintf("%d%%", m.Battery),
+			image.Rect(battery.Min.X+44, 0, battery.Max.X, headerHeight), mid, left, darkGray)
+		f.region(battery, 0, Action{})
+		edge = battery.Min.X - gap
+	}
+
+	status := image.Rect(date.Max.X, 0, edge, headerHeight)
+	if status.Empty() {
+		return
+	}
 	if !m.Connected {
-		msg, col = m.Status, black
+		msg := m.Status
 		if msg == "" {
 			msg = "Non connesso"
 		}
+		card(img, image.Rect(status.Min.X, 14, status.Max.X, headerHeight-12), 22, 0, black, black)
+		text(img, face(true, 22), msg, status.Inset(10), mid, center, white)
 	}
-	text(img, face(!m.Connected, 24), msg, status, headerHeight/2, center, col)
-	f.Regions = append(f.Regions, Region{Rect: status})
-	fill(img, image.Rect(0, headerHeight-2, w, headerHeight), black)
+	f.region(status, 0, Action{})
 }
 
-// button draws a tappable box. A disabled button is greyed out and inert.
-func button(f *Frame, r image.Rectangle, label string, inverted, enabled bool, a Action) {
+func drawBattery(img *image.Gray, r image.Rectangle, percent int) {
+	card(img, r, 4, 2, white, black)
+	fill(img, image.Rect(r.Max.X, r.Min.Y+5, r.Max.X+3, r.Max.Y-5), black)
+	inner := r.Inset(4)
+	inner.Max.X = inner.Min.X + inner.Dx()*min(percent, 100)/100
+	fill(img, inner, black)
+}
+
+// pill draws a rounded button. A disabled button is greyed out and inert.
+func pill(f *Frame, r image.Rectangle, label string, inverted, enabled bool, a Action) {
 	bg, fg, edge := white, black, black
 	if inverted {
 		bg, fg = black, white
@@ -186,28 +225,41 @@ func button(f *Frame, r image.Rectangle, label string, inverted, enabled bool, a
 	if !enabled {
 		fg, edge, a = midGray, midGray, Action{}
 	}
-	fill(f.Image, r, bg)
-	border(f.Image, r, 3, edge)
-	size := 28
-	if len([]rune(label)) <= 1 {
-		size = 48
-	}
-	inner := r.Inset(6)
-	for size > 18 && measure(face(true, size), label) > inner.Dx() {
+	rad := r.Dy() / 2
+	card(f.Image, r, float64(rad), 3, bg, edge)
+	size := 24
+	inner := r.Inset(8)
+	for size > 16 && measure(face(true, size), label) > inner.Dx() {
 		size -= 2
 	}
 	text(f.Image, face(true, size), label, inner, (r.Min.Y+r.Max.Y)/2, center, fg)
-	f.Regions = append(f.Regions, Region{Rect: r, Action: a})
+	f.region(r, rad, a)
 }
 
-func drawSensor(f *Frame, b block, name string, st ha.State, available bool) {
-	r := b.rect
-	border(f.Image, r, 1, midGray)
+// round draws a circular button of diameter d with a symbol inside.
+func round(f *Frame, x, y, d int, inverted, enabled bool, a Action, symbol func(cx, cy float64, g uint8)) {
+	r := image.Rect(x, y, x+d, y+d)
+	bg, fg, edge := white, black, black
+	if inverted {
+		bg, fg = black, white
+	}
+	if !enabled {
+		fg, edge, a = midGray, midGray, Action{}
+	}
+	card(f.Image, r, float64(d)/2, 3, bg, edge)
+	symbol(float64(x)+float64(d)/2, float64(y)+float64(d)/2, fg)
+	f.region(r, d/2, a)
+}
+
+func drawSensor(f *Frame, m Model, b block, name string, st ha.State, available bool) {
+	img, r := f.Image, b.rect
+	card(img, r, radius, 2, white, midGray)
 	value := "--"
+	current, numeric := 0.0, false
 	if available {
 		value = st.State
 		if v, err := strconv.ParseFloat(st.State, 64); err == nil {
-			value = number(v)
+			current, numeric, value = v, true, number(v)
 		}
 		unit := st.String("unit_of_measurement")
 		if strings.HasPrefix(unit, "°") {
@@ -215,47 +267,94 @@ func drawSensor(f *Frame, b block, name string, st ha.State, available bool) {
 		}
 		value += unit
 	}
-	inner := r.Inset(8)
-	text(f.Image, face(true, 44), value, inner, r.Min.Y+36, center, black)
-	small := face(false, 20)
-	for i, line := range wrap(small, name, inner.Dx()) {
-		text(f.Image, small, line, inner, r.Min.Y+74+i*22, center, darkGray)
+	inner := r.Inset(14)
+	text(img, face(false, 20), name, inner, r.Min.Y+22, left, darkGray)
+	text(img, face(true, 46), value, inner, r.Min.Y+60, left, black)
+
+	graph := image.Rect(inner.Min.X, r.Min.Y+90, inner.Max.X, r.Max.Y-30)
+	points := m.History[b.item.Entity]
+	if numeric {
+		points = append(points[:len(points):len(points)], ha.Point{Time: m.Now, Value: current})
 	}
-	f.Regions = append(f.Regions, Region{Rect: r})
+	if low, high, ok := sparkline(img, graph, points, m.Now); ok {
+		small := face(false, 17)
+		foot := r.Max.Y - 16
+		text(img, small, "min "+number(low), inner, foot, left, darkGray)
+		text(img, small, "max "+number(high), inner, foot, right, darkGray)
+	}
+	f.region(r, radius, Action{})
+}
+
+// sparkline plots the last 24 hours as a filled curve. The scale spans at
+// least one degree, so that sensor noise does not look like a swing.
+func sparkline(img *image.Gray, r image.Rectangle, points []ha.Point, now time.Time) (low, high float64, ok bool) {
+	if len(points) < 2 {
+		return 0, 0, false
+	}
+	start := now.Add(-ha.HistorySpan)
+	values := make([]float64, r.Dx()/3+1)
+	i, last := 0, points[0].Value
+	for col := range values {
+		until := start.Add(time.Duration(float64(ha.HistorySpan) * float64(col) / float64(len(values)-1)))
+		for i < len(points) && !points[i].Time.After(until) {
+			last = points[i].Value
+			i++
+		}
+		values[col] = last
+	}
+	// The newest reading closes the curve even if its clock is slightly ahead.
+	values[len(values)-1] = points[len(points)-1].Value
+	low, high = slices.Min(values), slices.Max(values)
+	bottom, top := low, high
+	if top-bottom < 1 {
+		mean := (top + bottom) / 2
+		bottom, top = mean-0.5, mean+0.5
+	}
+	at := func(col int) (float64, float64) {
+		x := float64(r.Min.X) + float64(col)*float64(r.Dx()-1)/float64(len(values)-1)
+		y := float64(r.Max.Y-2) - (values[col]-bottom)/(top-bottom)*float64(r.Dy()-4)
+		return x, y
+	}
+	for col := 1; col < len(values); col++ {
+		x0, y0 := at(col - 1)
+		x1, y1 := at(col)
+		for x := int(math.Ceil(x0)); x < int(math.Ceil(x1)); x++ {
+			y := y0 + (y1-y0)*(float64(x)-x0)/(x1-x0)
+			fill(img, image.Rect(x, int(y), x+1, r.Max.Y), lightGray)
+		}
+	}
+	for col := 1; col < len(values); col++ {
+		x0, y0 := at(col - 1)
+		x1, y1 := at(col)
+		line(img, x0, y0, x1, y1, 3, black)
+	}
+	return low, high, true
 }
 
 func drawLight(f *Frame, b block, name string, st ha.State, available bool) {
-	r := b.rect
+	img, r := f.Image, b.rect
 	on := available && st.State == "on"
-	bg, fg := white, black
+	bg, fg, edge := white, black, darkGray
 	action := Action{Kind: Toggle, Entity: b.item.Entity}
-	if on {
-		bg, fg = black, white
-	}
-	fill(f.Image, r, bg)
-	if available {
-		border(f.Image, r, 3, black)
-	} else {
-		border(f.Image, r, 3, midGray)
-		fg, action = midGray, Action{}
-	}
-
 	state := "spenta"
 	switch {
 	case !available:
-		state = "non disponibile"
+		state, fg, edge, action = "non disp.", midGray, midGray, Action{}
 	case on:
-		state = "accesa"
+		state, bg, fg, edge = "accesa", black, white, black
 	}
-	inner := r.Inset(10)
-	big := face(true, 26)
-	lines := wrap(big, name, inner.Dx())
-	y := r.Min.Y + 38 - (len(lines)-1)*15
-	for i, line := range lines {
-		text(f.Image, big, line, inner, y+i*30, center, fg)
+	card(img, r, radius, 3, bg, edge)
+	bulb(img, float64(r.Min.X+38), float64(r.Min.Y+r.Dy()/2), on, fg)
+
+	box := image.Rect(r.Min.X+72, r.Min.Y, r.Max.X-10, r.Max.Y)
+	big := face(true, 24)
+	lines := wrap(big, name, box.Dx())
+	y := r.Min.Y + 36 - (len(lines)-1)*13
+	for i, l := range lines {
+		text(img, big, l, box, y+i*27, left, fg)
 	}
-	text(f.Image, face(false, 20), state, inner, r.Max.Y-22, center, fg)
-	f.Regions = append(f.Regions, Region{Rect: r, Action: action})
+	text(img, face(false, 19), state, box, r.Max.Y-22, left, fg)
+	f.region(r, radius, action)
 }
 
 var modeNames = map[string]string{
@@ -275,23 +374,15 @@ func number(v float64) string {
 }
 
 func drawClimate(f *Frame, m Model, b block, name string, st ha.State, available bool) {
-	r := b.rect
-	info := image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+infoHeight)
-	fill(f.Image, image.Rect(info.Min.X, info.Min.Y, info.Max.X, info.Min.Y+3), black)
+	img, r := f.Image, b.rect
+	card(img, r, radius, 2, white, midGray)
 
-	inner := info.Inset(8)
+	on := available && st.State != "off"
+	title := image.Rect(r.Min.X+14, r.Min.Y+8, r.Max.X-14, r.Min.Y+66)
 	target, hasTarget := st.Float("temperature")
 	if v, ok := m.Pending[b.item.Entity]; ok {
 		target, hasTarget = v, true
 	}
-	targetText := "--"
-	if available && hasTarget {
-		targetText = number(target) + "°"
-	}
-	split := inner.Max.X - 150
-	nameBox := image.Rect(inner.Min.X, inner.Min.Y, split, inner.Max.Y)
-	text(f.Image, face(true, 30), name, nameBox, info.Min.Y+26, left, black)
-
 	sub := "non disponibile"
 	if available {
 		sub = modeName(st.State)
@@ -299,29 +390,44 @@ func drawClimate(f *Frame, m Model, b block, name string, st ha.State, available
 			sub += " · ora " + number(cur) + "°"
 		}
 	}
-	text(f.Image, face(false, 22), sub, nameBox, info.Min.Y+58, left, darkGray)
-	text(f.Image, face(true, 48), targetText, image.Rect(split, inner.Min.Y, inner.Max.X, inner.Max.Y), info.Min.Y+infoHeight/2, right, black)
-	f.Regions = append(f.Regions, Region{Rect: info})
+	text(img, face(true, 27), name, title, r.Min.Y+27, left, black)
+	text(img, face(false, 20), sub, title, r.Min.Y+53, left, darkGray)
+	f.region(title, 0, Action{})
 
-	on := available && st.State != "off"
-	width := (r.Dx() - 3*gap) / 4
-	at := func(i int) image.Rectangle {
-		x := r.Min.X + i*(width+gap)
-		return image.Rect(x, info.Max.Y, x+width, r.Max.Y)
-	}
+	const d = 76
 	e := b.item.Entity
-	button(f, at(0), "-", false, available && hasTarget, Action{TempDown, e})
-	button(f, at(1), "+", false, available && hasTarget, Action{TempUp, e})
-	mode := "Modo"
-	if on {
-		mode = modeName(st.State) + " ›"
+	y := r.Max.Y - d - 12
+	x := r.Min.X + 12
+	adjust := available && hasTarget
+	sign := func(plus bool) func(cx, cy float64, g uint8) {
+		return func(cx, cy float64, g uint8) {
+			line(img, cx-14, cy, cx+14, cy, 6, g)
+			if plus {
+				line(img, cx, cy-14, cx, cy+14, 6, g)
+			}
+		}
 	}
-	button(f, at(2), mode, false, on, Action{Mode, e})
-	power := "Accendi"
-	if on {
-		power = "Spegni"
+	round(f, x, y, d, false, adjust, Action{TempDown, e}, sign(false))
+
+	value := image.Rect(x+d+4, y, x+d+4+124, y+d)
+	targetText := "--"
+	if adjust {
+		targetText = number(target) + "°"
 	}
-	button(f, at(3), power, on, available, Action{Power, e})
+	text(img, face(true, 42), targetText, value, y+d/2, center, black)
+	f.region(value, 0, Action{})
+	round(f, value.Max.X+4, y, d, false, adjust, Action{TempUp, e}, sign(true))
+
+	power := r.Max.X - 12 - d
+	mode := image.Rect(value.Max.X+4+d+10, y+10, power-8, y+d-10)
+	label := "Modo"
+	if on {
+		label = modeName(st.State)
+	}
+	pill(f, mode, label, false, on, Action{Mode, e})
+	round(f, power, y, d, on, available, Action{Power, e}, func(cx, cy float64, g uint8) {
+		powerSymbol(img, cx, cy, g)
+	})
 }
 
 // Hit returns the action under p.
@@ -332,4 +438,18 @@ func (f Frame) Hit(p image.Point) (Region, bool) {
 		}
 	}
 	return Region{}, false
+}
+
+// Invert flips the pixels of a region's shape, as feedback for a touch.
+func Invert(img *image.Gray, r Region) {
+	shape := roundRect(r.Rect, float64(r.Radius))
+	area := r.Rect.Intersect(img.Rect)
+	for y := area.Min.Y; y < area.Max.Y; y++ {
+		for x := area.Min.X; x < area.Max.X; x++ {
+			if shape(float64(x)+0.5, float64(y)+0.5) <= 0 {
+				i := img.PixOffset(x, y)
+				img.Pix[i] = 255 - img.Pix[i]
+			}
+		}
+	}
 }

@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	black    uint8 = 0x00
-	darkGray uint8 = 0x55
-	midGray  uint8 = 0xAA
-	white    uint8 = 0xFF
+	black     uint8 = 0x00
+	darkGray  uint8 = 0x55
+	midGray   uint8 = 0xAA
+	lightGray uint8 = 0xDD
+	white     uint8 = 0xFF
 )
 
 type faceKey struct {
@@ -59,13 +60,6 @@ func face(isBold bool, size int) font.Face {
 
 func fill(img *image.Gray, r image.Rectangle, g uint8) {
 	draw.Draw(img, r, image.NewUniform(color.Gray{Y: g}), image.Point{}, draw.Src)
-}
-
-func border(img *image.Gray, r image.Rectangle, width int, g uint8) {
-	fill(img, image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+width), g)
-	fill(img, image.Rect(r.Min.X, r.Max.Y-width, r.Max.X, r.Max.Y), g)
-	fill(img, image.Rect(r.Min.X, r.Min.Y, r.Min.X+width, r.Max.Y), g)
-	fill(img, image.Rect(r.Max.X-width, r.Min.Y, r.Max.X, r.Max.Y), g)
 }
 
 type align int

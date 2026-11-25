@@ -9,6 +9,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -53,6 +54,9 @@ var ErrAuth = errors.New("token rejected")
 type Client struct {
 	url, token string
 	entities   []string
+	// Graphed lists the sensors whose history is fetched; set before Run.
+	Graphed []string
+	history map[string][]Point
 
 	mu        sync.Mutex
 	conn      *wsConn // nil while disconnected
@@ -145,6 +149,7 @@ type message struct {
 	Success *bool           `json:"success"`
 	Error   json.RawMessage `json:"error"`
 	Event   *entitiesEvent  `json:"event"`
+	Result  json.RawMessage `json:"result"`
 }
 
 // entitiesEvent is the compressed format of subscribe_entities.
@@ -261,13 +266,33 @@ func (c *Client) session(ctx context.Context) error {
 	}
 	c.notify()
 
+	var historyID atomic.Int64
+	fetchHistory := func() error {
+		if len(c.Graphed) == 0 {
+			return nil
+		}
+		id, err := c.send(historyRequest(c.Graphed, time.Now()))
+		historyID.Store(int64(id))
+		return err
+	}
+	if err := fetchHistory(); err != nil {
+		return err
+	}
+
 	go func() {
 		t := time.NewTicker(pingEvery)
 		defer t.Stop()
+		h := time.NewTicker(historyEvery)
+		defer h.Stop()
 		for {
 			select {
 			case <-done:
 				return
+			case <-h.C:
+				if err := fetchHistory(); err != nil {
+					w.Close()
+					return
+				}
 			case <-t.C:
 				if _, err := c.send(map[string]any{"type": "ping"}); err != nil {
 					w.Close()
@@ -286,6 +311,16 @@ func (c *Client) session(ctx context.Context) error {
 		case m.Type == "event" && m.ID == subID && m.Event != nil:
 			c.mu.Lock()
 			apply(c.states, m.Event)
+			c.mu.Unlock()
+			c.notify()
+		case m.Type == "result" && int64(m.ID) == historyID.Load() && m.Success != nil && *m.Success:
+			history, err := parseHistory(m.Result)
+			if err != nil {
+				log.Printf("home assistant: history: %v", err)
+				continue
+			}
+			c.mu.Lock()
+			c.history = history
 			c.mu.Unlock()
 			c.notify()
 		case m.Type == "result" && m.Success != nil && !*m.Success:

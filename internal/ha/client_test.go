@@ -50,3 +50,13 @@ func TestWebsocketURL(t *testing.T) {
 		}
 	}
 }
+
+func TestParseHistory(t *testing.T) {
+	got, err := parseHistory([]byte(`{"sensor.x":[{"s":"19.5","a":{},"lu":1000.5},{"s":"unavailable","lu":1001},{"s":"20","lu":1002}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := got["sensor.x"]; len(p) != 2 || p[0].Value != 19.5 || p[1].Time.Unix() != 1002 {
+		t.Errorf("got %+v", p)
+	}
+}

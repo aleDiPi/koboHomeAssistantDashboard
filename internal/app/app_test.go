@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/config"
+	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/ha"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/screen"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/ui"
 )
@@ -98,6 +99,28 @@ func TestExitNeedsTwoTaps(t *testing.T) {
 	a.render(false)
 	if done, _ := a.tap(centre(exit.Rect)); !done {
 		t.Fatal("did not exit on the second tap")
+	}
+}
+
+func TestLightLevel(t *testing.T) {
+	c := config.Default().Frontlight
+	c.NightWhenOff = []string{"light.a", "light.b"}
+	states := func(sun, a, b string) map[string]ha.State {
+		return map[string]ha.State{"sun.sun": {State: sun}, "light.a": {State: a}, "light.b": {State: b}}
+	}
+	for name, tc := range map[string]struct {
+		states map[string]ha.State
+		since  time.Duration
+		want   int
+	}{
+		"day":                  {states("above_horizon", "off", "off"), time.Second, 0},
+		"dark room":            {states("below_horizon", "off", "off"), time.Hour, c.NightLevel},
+		"room lit":             {states("below_horizon", "off", "on"), time.Hour, 0},
+		"touched after sunset": {states("below_horizon", "on", "on"), time.Second, c.TouchLevel},
+	} {
+		if got := lightLevel(c, tc.states, tc.since); got != tc.want {
+			t.Errorf("%s: %d, want %d", name, got, tc.want)
+		}
 	}
 }
 

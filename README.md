@@ -10,10 +10,27 @@ Glo con firmware 4.20.14622: schermo, touch e comandi funzionano.
 ## Installazione sul Kobo
 
 1. Installa [NickelMenu](https://github.com/pgaskin/NickelMenu).
-2. Copia `dist/kobodash`, `kobo/start.sh` e `dashboard.ini` in `.adds/kobodash/`.
+2. Copia in `.adds/kobodash/`: `dist/kobodash`, `kobo/start.sh`, `kobo/wifi.sh`,
+   `kobo/autostart.sh` e `dashboard.ini`.
 3. Copia `kobo/nickelmenu` come `.adds/nm/kobodash`.
-4. Con il Wi-Fi connesso, apri **Dashboard** dal menu. **Esci** (due tocchi)
-   riavvia il Kobo.
+4. Apri **Dashboard casa** dal menu. **Esci** (due tocchi) riavvia il Kobo.
+
+### Avvio automatico (facoltativo)
+
+Copia `dist/KoboRoot.tgz` in `.kobo/` ed espelli il Kobo: installa una regola
+udev che a ogni accensione esegue `autostart.sh`. Controlla prima che in `.kobo/`
+non ci sia già un `KoboRoot.tgz` (un aggiornamento in attesa).
+
+- Si attiva creando il file vuoto `.adds/kobodash/autostart`, si disattiva
+  cancellandolo.
+- La dashboard parte circa 30 secondi dopo l'accensione.
+- Dopo **Esci**, o dopo un errore, l'avvio successivo resta nell'interfaccia Kobo.
+
+## Luce dello schermo
+
+Sezione `[frontlight]` di `dashboard.ini`: spenta di giorno; dopo il tramonto al
+minimo se le luci indicate sono spente, più forte per qualche secondo dopo un
+tocco.
 
 ## Provarla sul PC
 
@@ -54,5 +71,7 @@ resta solo in quel file, escluso da git.
 
 `kobo/` contiene lo script di avvio e le voci per NickelMenu. Sul dispositivo
 vanno in `.adds/kobodash/` (con il binario e `dashboard.ini`) e `.adds/nm/`.
+
+La batteria viene annotata ogni 10 minuti in `kobodash.log`.
 
 Opzione `-touchtest`: registra gli eventi grezzi del touch, per la calibrazione.

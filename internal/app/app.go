@@ -14,6 +14,7 @@ import (
 
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/config"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/ha"
+	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/kobo"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/screen"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/ui"
 )
@@ -22,6 +23,7 @@ import (
 type Source interface {
 	Snapshot() (map[string]ha.State, bool, error)
 	Updates() <-chan struct{}
+	History() map[string][]ha.Point
 	Call(domain, service, entity string, data map[string]any) error
 }
 
@@ -52,14 +54,21 @@ type App struct {
 	exitUntil time.Time
 	lastFlash time.Time
 	partials  int
+
+	lastTouch  time.Time
+	light      int // frontlight level in use, -1 before the first one
+	battery    int
+	batteryLog time.Time
 }
 
 func New(cfg config.Config, src Source, disp screen.Display, loc *time.Location) *App {
-	return &App{cfg: cfg, src: src, disp: disp, loc: loc, temps: map[string]*pending{}}
+	return &App{cfg: cfg, src: src, disp: disp, loc: loc, temps: map[string]*pending{}, light: -1, battery: -1}
 }
 
 // Run serves taps and updates until the user taps "Esci" twice or ctx ends.
 func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
+	a.battery = kobo.Battery()
+	a.updateLight(time.Now())
 	a.render(true)
 	redraw := time.NewTimer(time.Hour)
 	var redrawAt time.Time
@@ -80,6 +89,7 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			return ctx.Err()
 		case <-a.src.Updates():
 			schedule(settleDelay)
+			a.updateLight(time.Now())
 		case <-redraw.C:
 			redrawAt = time.Time{}
 			a.render(false)
@@ -87,6 +97,8 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			if !ok {
 				return errors.New("touch input lost")
 			}
+			a.lastTouch = time.Now()
+			a.updateLight(a.lastTouch)
 			exit, delay := a.tap(p)
 			if exit {
 				return nil
@@ -96,6 +108,14 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			}
 		case <-tick.C:
 			now := time.Now()
+			a.updateLight(now)
+			if now.Sub(a.batteryLog) >= 10*time.Minute {
+				// A record of the drain, to size the power supply.
+				a.batteryLog = now
+				if level := kobo.Battery(); level >= 0 {
+					log.Printf("battery %d%%", level)
+				}
+			}
 			if a.flushTemps(now) {
 				schedule(0)
 			}
@@ -105,6 +125,7 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			}
 			if m := a.now().Minute(); m != minute {
 				minute = m
+				a.battery = kobo.Battery()
 				schedule(0)
 			}
 			if a.cfg.FullRefreshEvery > 0 && now.Sub(a.lastFlash) >= a.cfg.FullRefreshEvery {
@@ -122,6 +143,7 @@ func (a *App) model() ui.Model {
 		Config: a.cfg, States: states, Connected: connected,
 		Now: a.now(), Page: a.page, Pending: map[string]float64{},
 		ExitArmed: !a.exitUntil.IsZero(),
+		History:   a.src.History(), Battery: a.battery,
 	}
 	switch {
 	case errors.Is(err, ha.ErrAuth):
@@ -198,15 +220,6 @@ func same(a, b *image.Gray, r image.Rectangle) bool {
 	return true
 }
 
-func invert(img *image.Gray, r image.Rectangle) {
-	for y := r.Min.Y; y < r.Max.Y; y++ {
-		i, j := img.PixOffset(r.Min.X, y), img.PixOffset(r.Max.X, y)
-		for ; i < j; i++ {
-			img.Pix[i] = 255 - img.Pix[i]
-		}
-	}
-}
-
 // tap handles one touch. delay < 0 means no redraw is needed.
 func (a *App) tap(p image.Point) (exit bool, delay time.Duration) {
 	region, ok := a.frame.Hit(p)
@@ -215,7 +228,7 @@ func (a *App) tap(p image.Point) (exit bool, delay time.Duration) {
 	}
 	// Immediate feedback: only the touched area, with the fast waveform. The
 	// next render sees the difference and restores or updates it.
-	invert(a.frame.Image, region.Rect)
+	ui.Invert(a.frame.Image, region)
 	a.show(region.Rect, screen.Fast)
 	a.partials++
 
