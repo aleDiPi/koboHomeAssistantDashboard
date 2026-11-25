@@ -5,6 +5,8 @@ import (
 	"image"
 	"strconv"
 	"strings"
+
+	xdraw "golang.org/x/image/draw"
 )
 
 // special is the view of the screens that are not pages.
@@ -16,50 +18,64 @@ func blank(w, h int) Frame {
 	return Frame{Image: img, View: special, Pages: 1}
 }
 
-// RenderSleep draws what stays on screen while the device is suspended: that it
-// is asleep and how to wake it, with the readings of the last wake.
+// reading is a temperature for the standby screen, or "" if not configured.
+func reading(m Model, entity, label string) string {
+	if entity == "" {
+		return ""
+	}
+	value := "--"
+	if v, err := strconv.ParseFloat(m.States[entity].State, 64); err == nil {
+		value = number(v) + "°"
+	}
+	return label + " " + value
+}
+
+// tag writes s on a white pill, so that it reads over any picture.
+func tag(img *image.Gray, s string, size, x, y int, a align) {
+	f := face(true, size)
+	width, height := measure(f, s)+32, size+22
+	switch a {
+	case right:
+		x -= width
+	case center:
+		x -= width / 2
+	}
+	r := image.Rect(x, y, x+width, y+height)
+	card(img, r, float64(height)/2, 2, white, black)
+	text(img, f, s, r.Inset(6), y+height/2, center, black)
+}
+
+// RenderSleep draws what stays on screen while the device is suspended: a
+// picture, the temperatures of the last wake in small, and how to wake it.
 func RenderSleep(m Model, w, h int) Frame {
 	f := blank(w, h)
 	img := f.Image
-	all := image.Rect(24, 0, w-24, h)
+	indoor := reading(m, m.Config.Indoor, "Sala")
+	outdoor := reading(m, m.Config.Outdoor, "Fuori")
 
-	icon(img, "sleep", 120, w/2, h*16/100, black)
-	text(img, face(true, 54), "In standby", all, h*31/100, center, black)
-	text(img, face(false, 28), "Premi il tasto di accensione per usare la dashboard", all, h*39/100, center, black)
-
-	// The first page's sensors, as large figures.
-	if len(m.Layout.Pages) > 0 {
-		sensors := m.Layout.Pages[0].Sensors
-		if n := min(len(sensors), 4); n > 0 {
-			width := (w - 48) / n
-			for i, it := range sensors[:n] {
-				st := m.States[it.Entity]
-				value := "--"
-				if v, err := strconv.ParseFloat(st.State, 64); err == nil {
-					value = number(v)
-					if strings.HasPrefix(st.String("unit_of_measurement"), "°") {
-						value += "°"
-					}
-				}
-				name := it.Name
-				if name == "" {
-					name = st.String("friendly_name")
-				}
-				cell := image.Rect(24+i*width, 0, 24+(i+1)*width, h)
-				text(img, face(true, 52), value, cell, h*55/100, center, black)
-				text(img, face(false, 22), name, cell.Inset(6), h*62/100, center, darkGray)
-			}
-		}
+	if p := m.Picture; p != nil {
+		at := image.Pt((w-p.Rect.Dx())/2, (h-p.Rect.Dy())/2)
+		xdraw.Draw(img, p.Rect.Add(at), p, image.Point{}, xdraw.Src)
+	} else {
+		icon(img, "sleep", 140, w/2, h*35/100, black)
+		text(img, face(true, 54), "In standby", img.Rect, h*55/100, center, black)
 	}
 
+	if indoor != "" {
+		tag(img, indoor, 34, 16, 16, left)
+	}
+	if outdoor != "" {
+		tag(img, outdoor, 26, w-16, 16, right)
+	}
+	// Alerts, such as an open window, only while there is one.
 	if labels := notices(m); len(labels) > 0 {
-		text(img, face(true, 26), strings.Join(labels, " · "), all, h*76/100, center, black)
+		tag(img, strings.Join(labels, " · "), 22, w/2, h-96, center)
 	}
-	foot := "Ultimo aggiornamento " + m.Now.Format("15:04")
+	foot := "Premi il tasto di accensione · " + m.Now.Format("15:04")
 	if m.Battery >= 0 {
-		foot += fmt.Sprintf(" · batteria %d%%", m.Battery)
+		foot += fmt.Sprintf(" · %d%%", m.Battery)
 	}
-	text(img, face(false, 22), foot, all, h*90/100, center, darkGray)
+	tag(img, foot, 19, w/2, h-48, center)
 	return f
 }
 

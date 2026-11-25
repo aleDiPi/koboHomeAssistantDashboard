@@ -79,6 +79,11 @@ func (c Config) Watched(l Layout) []string {
 		lists = append(lists, timers)
 	}
 	if c.Power.Standby {
+		for _, id := range []string{c.Screensaver.Indoor, c.Screensaver.Outdoor} {
+			if id != "" {
+				lists = append(lists, []Item{{Entity: id}})
+			}
+		}
 		for _, id := range c.Power.Presence {
 			lists = append(lists, []Item{{Entity: id}})
 		}

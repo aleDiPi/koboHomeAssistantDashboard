@@ -57,7 +57,10 @@ type Region struct {
 
 // Model is everything a frame depends on.
 type Model struct {
-	Layout    config.Layout
+	Layout config.Layout
+	// For the standby screen.
+	Config    config.Screensaver
+	Picture   *image.Gray
 	States    map[string]ha.State
 	History   map[string][]ha.Point
 	Connected bool

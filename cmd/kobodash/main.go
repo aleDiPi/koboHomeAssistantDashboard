@@ -94,6 +94,12 @@ func run() error {
 	defer disp.Close()
 
 	dashboard := app.New(cfg, src, disp, loc)
+	if picture := cfg.Screensaver.Picture; picture != "" && cfg.Power.Standby {
+		if !filepath.IsAbs(picture) {
+			picture = filepath.Join(filepath.Dir(*cfgPath), picture)
+		}
+		dashboard.SetPicture(picture)
+	}
 	if button != nil {
 		dashboard.EnableStandby(button)
 	}

@@ -145,3 +145,24 @@ func TestSpecialScreensHaveNothingToTap(t *testing.T) {
 		}
 	}
 }
+
+func TestPictureFitsAndUsesSixteenGrays(t *testing.T) {
+	src := image.NewGray(image.Rect(0, 0, 400, 100))
+	for i := range src.Pix {
+		src.Pix[i] = uint8(60 + i%400*120/400) // a washed out gradient
+	}
+	got := prepare(src, 200, 200)
+	if got.Rect.Dx() != 200 || got.Rect.Dy() != 50 {
+		t.Fatalf("size %v", got.Rect)
+	}
+	low, high := uint8(255), uint8(0)
+	for _, p := range got.Pix {
+		if p%17 != 0 {
+			t.Fatalf("gray %d is not one of the 16 levels", p)
+		}
+		low, high = min(low, p), max(high, p)
+	}
+	if low != 0 || high != 255 {
+		t.Errorf("contrast not stretched: %d-%d", low, high)
+	}
+}

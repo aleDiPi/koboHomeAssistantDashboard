@@ -78,6 +78,7 @@ type App struct {
 	reportChecked time.Time
 	saving        *bool // nil until applied
 	savingChecked time.Time
+	picture       *image.Gray // of the standby screen, nil if none
 	sent          deviceState
 	light         int // frontlight level in use, -1 before the first one
 	battery       int
@@ -87,6 +88,18 @@ type App struct {
 func New(cfg config.Config, src Source, disp screen.Display, loc *time.Location) *App {
 	return &App{cfg: cfg, src: src, disp: disp, loc: loc, temps: map[string]*pending{}, light: -1, battery: -1,
 		batteryLevel: kobo.Battery, plugged: kobo.Plugged}
+}
+
+// SetPicture loads the picture of the standby screen. Without one, or if it
+// cannot be read, a plain notice is shown.
+func (a *App) SetPicture(path string) {
+	w, h := a.disp.Size()
+	picture, err := ui.LoadPicture(path, w, h)
+	if err != nil {
+		log.Printf("standby picture: %v", err)
+		return
+	}
+	a.picture = picture
 }
 
 // EnableStandby lets the device sleep; button reports presses of the power
@@ -194,7 +207,8 @@ func (a *App) now() time.Time { return time.Now().In(a.loc) }
 func (a *App) model() ui.Model {
 	states, connected, err := a.src.Snapshot()
 	m := ui.Model{
-		Layout: a.src.Layout(), States: states, Connected: connected,
+		Layout: a.src.Layout(), States: states,
+		Config: a.cfg.Screensaver, Picture: a.picture, Connected: connected,
 		Now: a.now(), View: a.view, Page: a.page, Pending: map[string]float64{},
 		Armed: a.armed,
 

@@ -39,8 +39,9 @@ type Config struct {
 	TouchMirrorX bool
 	TouchMirrorY bool
 
-	Frontlight Frontlight
-	Power      Power
+	Frontlight  Frontlight
+	Power       Power
+	Screensaver Screensaver
 
 	// Shown as chips in the header while on (or open).
 	Notifications []Item
@@ -78,6 +79,15 @@ type Power struct {
 	// only every ReportOnBattery (0 = never).
 	Report          bool
 	ReportOnBattery time.Duration
+}
+
+// Screensaver is what the standby screen shows.
+type Screensaver struct {
+	// Picture is a PNG or JPEG file; relative paths start from the folder of
+	// the configuration file.
+	Picture string
+	Indoor  string // temperature sensor of the living room
+	Outdoor string
 }
 
 // Default returns the settings that match a Kobo Glo (N613).
@@ -122,7 +132,7 @@ func Parse(r io.Reader) (Config, error) {
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section = strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
 			switch section {
-			case "homeassistant", "display", "touch", "frontlight", "power", "notifications", "calendar", "windows", "actions", "sensors", "lights", "climate":
+			case "homeassistant", "display", "touch", "frontlight", "power", "standby", "notifications", "calendar", "windows", "actions", "sensors", "lights", "climate":
 			default:
 				return c, fmt.Errorf("line %d: unknown section [%s]", n, section)
 			}
@@ -220,6 +230,12 @@ func (c *Config) set(section, key, val string) error {
 		c.Power.Report, err = strconv.ParseBool(val)
 	case "power.report_on_battery":
 		c.Power.ReportOnBattery, err = time.ParseDuration(val)
+	case "standby.picture":
+		c.Screensaver.Picture = val
+	case "standby.indoor":
+		c.Screensaver.Indoor = val
+	case "standby.outdoor":
+		c.Screensaver.Outdoor = val
 	case "power.standby":
 		c.Power.Standby, err = strconv.ParseBool(val)
 	case "power.presence":
