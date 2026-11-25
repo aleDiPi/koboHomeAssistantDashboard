@@ -60,3 +60,15 @@ func TestParseHistory(t *testing.T) {
 		t.Errorf("got %+v", p)
 	}
 }
+
+func TestParseEvents(t *testing.T) {
+	got, err := parseEvents([]byte(`{"context":{},"response":{"calendar.a":{"events":[
+		{"start":"2026-11-27","end":"2026-11-28","summary":"all day"},
+		{"start":"2026-11-26T10:00:00+01:00","end":"2026-11-26T11:00:00+01:00","summary":"timed"}]}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Summary != "timed" || got[0].AllDay || !got[1].AllDay {
+		t.Errorf("got %+v", got)
+	}
+}

@@ -71,6 +71,9 @@ func run() error {
 		for _, it := range cfg.Sensors {
 			client.Graphed = append(client.Graphed, it.Entity)
 		}
+		for _, it := range cfg.Calendars {
+			client.Calendars = append(client.Calendars, it.Entity)
+		}
 		go client.Run(ctx)
 		src = client
 	}

@@ -57,6 +57,9 @@ type Client struct {
 	// Graphed lists the sensors whose history is fetched; set before Run.
 	Graphed []string
 	history map[string][]Point
+	// Calendars lists the calendars whose events are fetched; set before Run.
+	Calendars []string
+	events    []Event
 
 	mu        sync.Mutex
 	conn      *wsConn // nil while disconnected
@@ -275,7 +278,19 @@ func (c *Client) session(ctx context.Context) error {
 		historyID.Store(int64(id))
 		return err
 	}
+	var eventsID atomic.Int64
+	fetchEvents := func() error {
+		if len(c.Calendars) == 0 {
+			return nil
+		}
+		id, err := c.send(calendarRequest(c.Calendars, time.Now()))
+		eventsID.Store(int64(id))
+		return err
+	}
 	if err := fetchHistory(); err != nil {
+		return err
+	}
+	if err := fetchEvents(); err != nil {
 		return err
 	}
 
@@ -289,7 +304,7 @@ func (c *Client) session(ctx context.Context) error {
 			case <-done:
 				return
 			case <-h.C:
-				if err := fetchHistory(); err != nil {
+				if err := errors.Join(fetchHistory(), fetchEvents()); err != nil {
 					w.Close()
 					return
 				}
@@ -321,6 +336,16 @@ func (c *Client) session(ctx context.Context) error {
 			}
 			c.mu.Lock()
 			c.history = history
+			c.mu.Unlock()
+			c.notify()
+		case m.Type == "result" && int64(m.ID) == eventsID.Load() && m.Success != nil && *m.Success:
+			events, err := parseEvents(m.Result)
+			if err != nil {
+				log.Printf("home assistant: calendar: %v", err)
+				continue
+			}
+			c.mu.Lock()
+			c.events = events
 			c.mu.Unlock()
 			c.notify()
 		case m.Type == "result" && m.Success != nil && !*m.Success:

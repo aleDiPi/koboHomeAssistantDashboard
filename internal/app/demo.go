@@ -59,6 +59,21 @@ func (d *Demo) Snapshot() (map[string]ha.State, bool, error) {
 
 func (d *Demo) Updates() <-chan struct{} { return d.updates }
 
+// Events invents a few appointments.
+func (d *Demo) Events() []ha.Event {
+	now := time.Now().Truncate(time.Hour)
+	event := func(after time.Duration, summary string) ha.Event {
+		return ha.Event{Summary: summary, Start: now.Add(after), End: now.Add(after + time.Hour)}
+	}
+	return []ha.Event{
+		event(0, "Riscaldamento"),
+		event(5*time.Hour, "Cena con amici"),
+		event(26*time.Hour, "Dentista"),
+		event(100*time.Hour, "Raccolta carta"),
+		event(200*time.Hour, "Compleanno"),
+	}
+}
+
 // History invents a daily temperature curve for each sensor.
 func (d *Demo) History() map[string][]ha.Point {
 	d.mu.Lock()

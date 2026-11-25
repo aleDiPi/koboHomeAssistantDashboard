@@ -26,6 +26,12 @@ non ci sia già un `KoboRoot.tgz` (un aggiornamento in attesa).
 - La dashboard parte circa 30 secondi dopo l'accensione.
 - Dopo **Esci**, o dopo un errore, l'avvio successivo resta nell'interfaccia Kobo.
 
+## Schermate
+
+I pulsanti in basso passano tra **Casa** (grafici delle temperature e
+calendario), **Luci** e **Clima**. Dopo `return_home` senza tocchi si torna a
+Casa. I calendari si elencano nella sezione `[calendar]`.
+
 ## Avvisi
 
 Le entità in `[notifications]` compaiono come etichette nell'intestazione solo

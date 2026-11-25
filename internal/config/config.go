@@ -26,6 +26,7 @@ type Config struct {
 	ScreenRotation   int    // -1 = auto, otherwise 0/90/180/270 applied to the framebuffer
 	FullRefreshEvery time.Duration
 	Timezone         string
+	ReturnHome       time.Duration // back to the home view when idle; 0 = never
 
 	TouchDevice  string
 	TouchSwapXY  bool
@@ -37,9 +38,10 @@ type Config struct {
 	// Shown as chips in the header while on (or open).
 	Notifications []Item
 
-	Sensors []Item
-	Lights  []Item
-	Climate []Item
+	Calendars []Item
+	Sensors   []Item
+	Lights    []Item
+	Climate   []Item
 }
 
 // Frontlight controls the screen light.
@@ -61,6 +63,7 @@ func Default() Config {
 		ScreenRotation:   -1,
 		FullRefreshEvery: 30 * time.Minute,
 		Timezone:         "Europe/Rome",
+		ReturnHome:       2 * time.Minute,
 		TouchDevice:      "/dev/input/event1",
 		TouchSwapXY:      true,
 		TouchMirrorX:     true,
@@ -117,7 +120,7 @@ func Parse(r io.Reader) (Config, error) {
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section = strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
 			switch section {
-			case "homeassistant", "display", "touch", "frontlight", "notifications", "sensors", "lights", "climate":
+			case "homeassistant", "display", "touch", "frontlight", "notifications", "calendar", "sensors", "lights", "climate":
 			default:
 				return c, fmt.Errorf("line %d: unknown section [%s]", n, section)
 			}
@@ -127,7 +130,7 @@ func Parse(r io.Reader) (Config, error) {
 		key, val = strings.TrimSpace(key), strings.TrimSpace(val)
 
 		switch section {
-		case "sensors", "lights", "climate", "notifications":
+		case "sensors", "lights", "climate", "notifications", "calendar":
 			if !strings.Contains(key, ".") {
 				return c, fmt.Errorf("line %d: %q is not an entity id", n, key)
 			}
@@ -135,6 +138,8 @@ func Parse(r io.Reader) (Config, error) {
 			switch section {
 			case "sensors":
 				c.Sensors = append(c.Sensors, it)
+			case "calendar":
+				c.Calendars = append(c.Calendars, it)
 			case "notifications":
 				c.Notifications = append(c.Notifications, it)
 			case "lights":
@@ -180,6 +185,8 @@ func (c *Config) set(section, key, val string) error {
 		}
 	case "display.full_refresh_every":
 		c.FullRefreshEvery, err = time.ParseDuration(val)
+	case "display.return_home":
+		c.ReturnHome, err = time.ParseDuration(val)
 	case "display.timezone":
 		c.Timezone = val
 	case "touch.device":

@@ -4,6 +4,7 @@ import (
 	"image"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/config"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/ha"
@@ -42,5 +43,27 @@ func TestChipsStayInside(t *testing.T) {
 				t.Fatalf("painted outside at %d,%d", x, y)
 			}
 		}
+	}
+}
+
+func TestWhenAndUpcoming(t *testing.T) {
+	loc := time.FixedZone("cet", 3600)
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, loc)
+	at := func(d, h int) time.Time { return time.Date(2026, 11, d, h, 0, 0, 0, loc) }
+	date := func(d int) time.Time { return time.Date(2026, 11, d, 0, 0, 0, 0, time.UTC) }
+	events := []ha.Event{
+		{Summary: "over", Start: at(25, 8), End: at(25, 9)},
+		{Summary: "running", Start: at(25, 11), End: at(25, 13)},
+		{Summary: "tomorrow", Start: at(26, 9), End: at(26, 10)},
+		{Summary: "today all day", Start: date(25), End: date(26), AllDay: true},
+		{Summary: "yesterday all day", Start: date(24), End: date(25), AllDay: true},
+	}
+	var got []string
+	for _, e := range upcoming(events, now) {
+		got = append(got, e.Summary+": "+when(e, now))
+	}
+	want := []string{"running: adesso, fino alle 13:00", "tomorrow: domani alle 09:00", "today all day: oggi"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q", got)
 	}
 }

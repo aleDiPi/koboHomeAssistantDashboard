@@ -24,6 +24,7 @@ type Source interface {
 	Snapshot() (map[string]ha.State, bool, error)
 	Updates() <-chan struct{}
 	History() map[string][]ha.Point
+	Events() []ha.Event
 	Call(domain, service, entity string, data map[string]any) error
 }
 
@@ -49,6 +50,7 @@ type App struct {
 	loc  *time.Location
 
 	frame     ui.Frame
+	view      ui.View
 	page      int
 	temps     map[string]*pending
 	exitUntil time.Time
@@ -116,6 +118,9 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 					log.Printf("battery %d%%", level)
 				}
 			}
+			if a.returnHome(now) {
+				schedule(0)
+			}
 			if a.flushTemps(now) {
 				schedule(0)
 			}
@@ -141,9 +146,9 @@ func (a *App) model() ui.Model {
 	states, connected, err := a.src.Snapshot()
 	m := ui.Model{
 		Config: a.cfg, States: states, Connected: connected,
-		Now: a.now(), Page: a.page, Pending: map[string]float64{},
+		Now: a.now(), View: a.view, Page: a.page, Pending: map[string]float64{},
 		ExitArmed: !a.exitUntil.IsZero(),
-		History:   a.src.History(), Battery: a.battery,
+		History:   a.src.History(), Battery: a.battery, Events: a.src.Events(),
 	}
 	switch {
 	case errors.Is(err, ha.ErrAuth):
@@ -171,7 +176,7 @@ func (a *App) render(flash bool) {
 	a.frame, a.page = next, next.Page
 
 	var changed []image.Rectangle
-	if old.Image == nil || old.Page != next.Page || a.partials >= maxPartials {
+	if old.Image == nil || old.View != next.View || old.Page != next.Page || a.partials >= maxPartials {
 		flash = true
 	}
 	if !flash {
@@ -244,6 +249,9 @@ func (a *App) tap(p image.Point) (exit bool, delay time.Duration) {
 		}
 		a.exitUntil = time.Now().Add(exitWindow)
 		return false, 0
+	case ui.Show:
+		a.view, a.page = act.View, 0
+		return false, 0
 	case ui.NextPage:
 		a.page = (a.frame.Page + 1) % a.frame.Pages
 		return false, 0
@@ -271,6 +279,15 @@ func (a *App) call(domain, service, entity string, data map[string]any) {
 	if err := a.src.Call(domain, service, entity, data); err != nil {
 		log.Printf("call failed: %v", err)
 	}
+}
+
+// returnHome goes back to the home view after a while without touches.
+func (a *App) returnHome(now time.Time) bool {
+	if a.cfg.ReturnHome <= 0 || a.view == ui.Home || now.Sub(a.lastTouch) < a.cfg.ReturnHome {
+		return false
+	}
+	a.view, a.page = ui.Home, 0
+	return true
 }
 
 // nextMode cycles through the active modes; "off" has its own button.
