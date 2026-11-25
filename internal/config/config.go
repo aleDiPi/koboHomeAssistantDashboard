@@ -22,6 +22,9 @@ type Item struct {
 type Config struct {
 	URL   string
 	Token string
+	// Dashboard is the url path of the Home Assistant dashboard that defines
+	// the pages; empty to use the lists below.
+	Dashboard string
 
 	Orientation      string // portrait, portrait_inverted, landscape, landscape_inverted
 	ScreenRotation   int    // -1 = auto, otherwise 0/90/180/270 applied to the framebuffer
@@ -74,30 +77,6 @@ func Default() Config {
 			TouchTime: 30 * time.Second, Sun: "sun.sun",
 		},
 	}
-}
-
-// Entities lists every configured entity once.
-func (c Config) Entities() []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, list := range [][]Item{c.Sensors, c.Lights, c.Climate, c.Windows, c.Notifications} {
-		for _, it := range list {
-			if !seen[it.Entity] {
-				seen[it.Entity] = true
-				out = append(out, it.Entity)
-			}
-		}
-	}
-	// Entities only watched to decide the screen light.
-	if c.Frontlight.Manage {
-		for _, id := range append([]string{c.Frontlight.Sun}, c.Frontlight.NightWhenOff...) {
-			if id != "" && !seen[id] {
-				seen[id] = true
-				out = append(out, id)
-			}
-		}
-	}
-	return out
 }
 
 func Load(path string) (Config, error) {
@@ -170,6 +149,8 @@ func (c *Config) set(section, key, val string) error {
 	switch section + "." + key {
 	case "homeassistant.url":
 		c.URL = strings.TrimRight(val, "/")
+	case "homeassistant.dashboard":
+		c.Dashboard = val
 	case "homeassistant.token":
 		c.Token = val
 	case "display.orientation":

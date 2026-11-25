@@ -17,10 +17,11 @@ type Demo struct {
 	mu      sync.Mutex
 	states  map[string]ha.State
 	updates chan struct{}
+	layout  config.Layout
 }
 
 func NewDemo(c config.Config) *Demo {
-	d := &Demo{states: map[string]ha.State{}, updates: make(chan struct{}, 1)}
+	d := &Demo{states: map[string]ha.State{}, updates: make(chan struct{}, 1), layout: c.LocalLayout()}
 	for _, it := range c.Sensors {
 		d.states[it.Entity] = ha.State{State: "19.4", Attr: map[string]any{"unit_of_measurement": "°C"}}
 	}
@@ -69,11 +70,18 @@ func (d *Demo) Snapshot() (map[string]ha.State, bool, error) {
 
 func (d *Demo) Updates() <-chan struct{} { return d.updates }
 
+// Layout is the one of the configuration file.
+func (d *Demo) Layout() config.Layout { return d.layout }
+
 // Events invents a few appointments.
 func (d *Demo) Events() []ha.Event {
 	now := time.Now().Truncate(time.Hour)
 	event := func(after time.Duration, summary string) ha.Event {
-		return ha.Event{Summary: summary, Start: now.Add(after), End: now.Add(after + time.Hour)}
+		var calendar string
+		if ids := d.layout.CalendarIDs(); len(ids) > 0 {
+			calendar = ids[0]
+		}
+		return ha.Event{Calendar: calendar, Summary: summary, Start: now.Add(after), End: now.Add(after + time.Hour)}
 	}
 	return []ha.Event{
 		event(0, "Riscaldamento"),

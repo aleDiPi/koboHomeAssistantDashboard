@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/config"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/ha"
 )
 
@@ -53,7 +54,23 @@ func span(e ha.Event, loc *time.Location) (first, last time.Time) {
 }
 
 // drawCalendar fills area with the month grid and the upcoming events.
-func drawCalendar(f *Frame, m Model, area image.Rectangle) {
+func drawCalendar(f *Frame, m Model, calendars []config.Item, area image.Rectangle) {
+	// Only the calendars of this page.
+	names := map[string]string{}
+	for _, c := range calendars {
+		names[c.Entity] = c.Name
+		if c.Name == "" {
+			names[c.Entity] = m.States[c.Entity].String("friendly_name")
+		}
+	}
+	var events []ha.Event
+	for _, e := range m.Events {
+		if _, ok := names[e.Calendar]; ok || e.Calendar == "" {
+			events = append(events, e)
+		}
+	}
+	m.Events = events
+
 	monthW := area.Dx() * 42 / 100
 	month := image.Rect(area.Min.X, area.Min.Y, area.Min.X+monthW, area.Max.Y)
 	list := image.Rect(month.Max.X+gap, area.Min.Y, area.Max.X, area.Max.Y)
@@ -63,7 +80,7 @@ func drawCalendar(f *Frame, m Model, area image.Rectangle) {
 		list = image.Rect(area.Min.X, month.Max.Y+gap, area.Max.X, area.Max.Y)
 	}
 	drawMonth(f.Image, m, month)
-	drawAgenda(f.Image, m, list)
+	drawAgenda(f.Image, m, names, list)
 	f.region(month, radius, Action{})
 	f.region(list, radius, Action{})
 }
@@ -160,7 +177,7 @@ func upcoming(events []ha.Event, now time.Time) []ha.Event {
 	return out
 }
 
-func drawAgenda(img *image.Gray, m Model, r image.Rectangle) {
+func drawAgenda(img *image.Gray, m Model, names map[string]string, r image.Rectangle) {
 	card(img, r, radius, 2, white, midGray)
 	inner := r.Inset(18)
 	text(img, face(true, 26), "In programma", inner, r.Min.Y+28, left, black)
@@ -168,15 +185,8 @@ func drawAgenda(img *image.Gray, m Model, r image.Rectangle) {
 	events := upcoming(m.Events, m.Now)
 	if len(events) == 0 {
 		msg := "Nessun evento in programma"
-		if len(m.Config.Calendars) == 0 {
-			msg = "Nessun calendario configurato"
-		}
 		text(img, face(false, 22), msg, inner, r.Min.Y+80, left, darkGray)
 		return
-	}
-	names := map[string]string{}
-	for _, c := range m.Config.Calendars {
-		names[c.Entity] = c.Name
 	}
 	const rowH = 60
 	y := r.Min.Y + 56

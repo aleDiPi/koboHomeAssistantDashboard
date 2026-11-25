@@ -31,9 +31,10 @@ const (
 	CloseCover
 )
 
-// View is one of the screens.
+// View is the index of one of the pages.
 type View int
 
+// The pages of the layout built from the configuration file.
 const (
 	Home View = iota
 	Lights
@@ -55,7 +56,7 @@ type Region struct {
 
 // Model is everything a frame depends on.
 type Model struct {
-	Config    config.Config
+	Layout    config.Layout
 	States    map[string]ha.State
 	History   map[string][]ha.Point
 	Connected bool
@@ -91,11 +92,21 @@ const (
 	radius       = 18
 )
 
+type blockKind int
+
+const (
+	sensorBlock blockKind = iota
+	lightBlock
+	climateBlock
+	windowBlock
+	calendarBlock
+)
+
 type block struct {
-	item   config.Item
-	rect   image.Rectangle
-	page   int
-	window bool
+	kind blockKind
+	item config.Item
+	rect image.Rectangle
+	page int
 }
 
 // body is the area between the header and the navigation bar.
@@ -103,76 +114,89 @@ func body(w, h int) image.Rectangle {
 	return image.Rect(margin, headerHeight+gap, w-margin, h-navHeight-2*margin)
 }
 
-// grid flows items into rows of cols and the rows into pages. Rows grow to
-// share the height of area, between lowest and highest.
-func grid(items []config.Item, area image.Rectangle, cols, lowest, highest int) (blocks []block, pages int) {
-	if len(items) == 0 {
-		return nil, 1
+// flow places the content of a page: each kind of entity in its own grid, one
+// under the other, the calendar taking what is left. What does not fit goes to
+// further sheets.
+func flow(p config.Page, area image.Rectangle, landscape bool) (blocks []block, sheets int) {
+	type section struct {
+		kind                  blockKind
+		items                 []config.Item
+		cols, lowest, highest int
 	}
-	rows := (len(items) + cols - 1) / cols
-	height := max(lowest, min(highest, (area.Dy()-(rows-1)*gap)/rows))
-	perPage := max(1, (area.Dy()+gap)/(height+gap))
-	width := (area.Dx() - (cols-1)*gap) / cols
-	for i, it := range items {
-		row := i / cols
-		x := area.Min.X + (i%cols)*(width+gap)
-		y := area.Min.Y + (row%perPage)*(height+gap)
-		blocks = append(blocks, block{item: it, rect: image.Rect(x, y, x+width, y+height), page: row / perPage})
+	cols := func(wide, tall int) int {
+		if landscape {
+			return wide
+		}
+		return tall
 	}
-	return blocks, (rows-1)/perPage + 1
+	var sections []section
+	for _, s := range []section{
+		{sensorBlock, p.Sensors, 4, sensorHeight, sensorHeight + 20},
+		{lightBlock, p.Lights, cols(4, 3), lightHeight, 190},
+		{climateBlock, p.Climate, cols(2, 1), climateH, 200},
+		{windowBlock, p.Windows, cols(2, 1), windowLow, 170},
+	} {
+		if len(s.items) > 0 {
+			sections = append(sections, s)
+		}
+	}
+
+	sheet, y := 0, area.Min.Y
+	for n, s := range sections {
+		// Only the last grid may stretch over the remaining space.
+		if n < len(sections)-1 || len(p.Calendars) > 0 {
+			s.highest = min(s.highest, s.lowest+20)
+		}
+		if area.Max.Y-y < s.lowest {
+			sheet, y = sheet+1, area.Min.Y
+		}
+		rows := (len(s.items) + s.cols - 1) / s.cols
+		space := area.Max.Y - y
+		height := max(s.lowest, min(s.highest, (space-(rows-1)*gap)/rows))
+		width := (area.Dx() - (s.cols-1)*gap) / s.cols
+		for i := 0; i < len(s.items); i += s.cols {
+			if y+height > area.Max.Y && y > area.Min.Y {
+				sheet, y = sheet+1, area.Min.Y
+			}
+			for j := 0; j < s.cols && i+j < len(s.items); j++ {
+				x := area.Min.X + j*(width+gap)
+				blocks = append(blocks, block{s.kind, s.items[i+j], image.Rect(x, y, x+width, y+height), sheet})
+			}
+			y += height + gap
+		}
+	}
+	if len(p.Calendars) > 0 {
+		if area.Max.Y-y < 300 && y > area.Min.Y {
+			sheet, y = sheet+1, area.Min.Y
+		}
+		blocks = append(blocks, block{kind: calendarBlock, rect: image.Rect(area.Min.X, y, area.Max.X, area.Max.Y), page: sheet})
+	}
+	return blocks, sheet + 1
 }
 
-// Render draws one page of the current view on a w×h canvas.
+// Render draws one sheet of the current page on a w×h canvas.
 func Render(m Model, w, h int) Frame {
 	img := image.NewGray(image.Rect(0, 0, w, h))
 	fill(img, img.Rect, white)
 
-	area := body(w, h)
-	landscape := w > h
-	var blocks []block
-	pages := 1
-	switch m.View {
-	case Lights:
-		cols := 3
-		if landscape {
-			cols = 4
-		}
-		blocks, pages = grid(m.Config.Lights, area, cols, lightHeight, 190)
-	case Climate:
-		cols := 1
-		if landscape {
-			cols = 2
-		}
-		blocks, pages = grid(m.Config.Climate, area, cols, climateH, 200)
-		// Windows go under the air conditioners, or on further pages.
-		rest, first := area, 0
-		if n := len(blocks); n > 0 {
-			rest.Min.Y, first = blocks[n-1].rect.Max.Y+gap, pages-1
-			if rest.Dy() < windowLow || blocks[n-1].page != first {
-				rest, first = area, pages
-			}
-		}
-		more, morePages := grid(m.Config.Windows, rest, cols, windowLow, 170)
-		for _, b := range more {
-			b.page += first
-			b.window = true
-			blocks = append(blocks, b)
-		}
-		if len(more) > 0 {
-			pages = max(pages, first+morePages)
-		}
-	default:
-		blocks, _ = grid(m.Config.Sensors, area, 4, sensorHeight, sensorHeight+20)
+	var page config.Page
+	view := View(0)
+	if n := len(m.Layout.Pages); n > 0 {
+		view = View(min(max(int(m.View), 0), n-1))
+		page = m.Layout.Pages[view]
 	}
-	f := Frame{Image: img, View: m.View, Pages: pages, Page: m.Page % pages}
+	blocks, pages := flow(page, body(w, h), w > h)
+	f := Frame{Image: img, View: view, Pages: pages, Page: m.Page % pages}
 
 	drawHeader(&f, m, w)
-	below := area.Min.Y
 	for _, b := range blocks {
 		if b.page != f.Page {
 			continue
 		}
-		below = max(below, b.rect.Max.Y+gap)
+		if b.kind == calendarBlock {
+			drawCalendar(&f, m, page.Calendars, b.rect)
+			continue
+		}
 		st, known := m.States[b.item.Entity]
 		available := m.Connected && known && st.State != "unavailable" && st.State != "unknown"
 		name := b.item.Name
@@ -182,28 +206,35 @@ func Render(m Model, w, h int) Frame {
 		if name == "" {
 			name = b.item.Entity
 		}
-		switch m.View {
-		case Lights:
-			drawLight(&f, b, name, st, available)
-		case Climate:
-			if b.window {
-				drawWindow(&f, m, b, name, st, available)
-			} else {
-				drawClimate(&f, m, b, name, st, available)
-			}
-		default:
+		switch b.kind {
+		case sensorBlock:
 			drawSensor(&f, m, b, name, st, available)
+		case lightBlock:
+			// Scenes and buttons have no state of their own until first used.
+			available = available || (m.Connected && known && momentary(b.item.Entity) && st.State == "unknown")
+			drawLight(&f, b, name, st, available)
+		case climateBlock:
+			drawClimate(&f, m, b, name, st, available)
+		case windowBlock:
+			drawWindow(&f, m, b, name, st, available)
 		}
-	}
-	if m.View == Home && area.Max.Y-below > 200 {
-		drawCalendar(&f, m, image.Rect(area.Min.X, below, area.Max.X, area.Max.Y))
 	}
 	drawNav(&f, m, w, h)
 	return f
 }
 
-// drawNav draws the buttons that switch view, with what is on in each.
+// momentary entities are run rather than switched on and off.
+func momentary(entity string) bool {
+	domain, _, _ := strings.Cut(entity, ".")
+	return domain == "scene" || domain == "script" || domain == "button" || domain == "input_button"
+}
+
+// drawNav draws the buttons that switch page, with what is on in each.
 func drawNav(f *Frame, m Model, w, h int) {
+	n := len(m.Layout.Pages)
+	if n < 2 {
+		return
+	}
 	count := func(items []config.Item, active func(string) bool) (n int) {
 		for _, it := range items {
 			if st, ok := m.States[it.Entity]; ok && active(st.State) {
@@ -212,27 +243,26 @@ func drawNav(f *Frame, m Model, w, h int) {
 		}
 		return n
 	}
-	label := func(name string, n int, one, many string) string {
+	width := (w - 2*margin - (n-1)*gap) / n
+	for i, p := range m.Layout.Pages {
+		label, on, one, many := p.Title, 0, "", ""
 		switch {
-		case !m.Connected || n == 0:
-			return name
-		case n == 1:
-			return name + " · 1 " + one
+		case len(p.Lights) > 0:
+			on, one, many = count(p.Lights, func(s string) bool { return s == "on" }), "accesa", "accese"
+		case len(p.Climate) > 0:
+			off := func(s string) bool { return s == "off" || s == "unavailable" || s == "unknown" }
+			on, one, many = count(p.Climate, func(s string) bool { return !off(s) }), "acceso", "accesi"
 		}
-		return fmt.Sprintf("%s · %d %s", name, n, many)
-	}
-	lights := count(m.Config.Lights, func(s string) bool { return s == "on" })
-	climate := count(m.Config.Climate, func(s string) bool { return s != "off" && s != "unavailable" && s != "unknown" })
-	labels := []string{
-		"Casa",
-		label("Luci", lights, "accesa", "accese"),
-		label("Clima", climate, "acceso", "accesi"),
-	}
-	width := (w - 2*margin - 2*gap) / len(labels)
-	for i, l := range labels {
+		if m.Connected && on > 0 {
+			word := many
+			if on == 1 {
+				word = one
+			}
+			label = fmt.Sprintf("%s · %d %s", p.Title, on, word)
+		}
 		x := margin + i*(width+gap)
 		r := image.Rect(x, h-margin-navHeight, x+width, h-margin)
-		pill(f, r, l, View(i) == m.View, true, Action{Kind: Show, View: View(i)})
+		pill(f, r, label, View(i) == f.View, true, Action{Kind: Show, View: View(i)})
 	}
 }
 
@@ -301,7 +331,7 @@ func drawHeader(f *Frame, m Model, w int) {
 // notices lists the labels of the notifications that are active now.
 func notices(m Model) []string {
 	var out []string
-	for _, it := range m.Config.Notifications {
+	for _, it := range m.Layout.Notifications {
 		st := m.States[it.Entity]
 		if st.State != "on" && st.State != "open" {
 			continue
@@ -484,12 +514,19 @@ func drawLight(f *Frame, b block, name string, st ha.State, available bool) {
 	symbol := stateIcon(iconName(b.item.Icon, st.String("icon"), fallback), on)
 	bg, fg, edge := white, black, darkGray
 	action := Action{Kind: Toggle, Entity: b.item.Entity}
-	state := "spenta"
+	offWord, onWord := "spento", "acceso"
+	if strings.HasPrefix(b.item.Entity, "light.") {
+		offWord, onWord = "spenta", "accesa"
+	}
+	if momentary(b.item.Entity) {
+		offWord = "tocca per avviare"
+	}
+	state := offWord
 	switch {
 	case !available:
 		state, fg, edge, action = "non disp.", midGray, midGray, Action{}
 	case on:
-		state, bg, fg, edge = "accesa", black, white, black
+		state, bg, fg, edge = onWord, black, white, black
 	}
 	card(img, r, radius, 3, bg, edge)
 	if r.Dy() >= 130 {

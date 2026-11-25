@@ -25,6 +25,7 @@ type Source interface {
 	Updates() <-chan struct{}
 	History() map[string][]ha.Point
 	Events() []ha.Event
+	Layout() config.Layout
 	Call(domain, service, entity string, data map[string]any) error
 }
 
@@ -146,7 +147,7 @@ func (a *App) now() time.Time { return time.Now().In(a.loc) }
 func (a *App) model() ui.Model {
 	states, connected, err := a.src.Snapshot()
 	m := ui.Model{
-		Config: a.cfg, States: states, Connected: connected,
+		Layout: a.src.Layout(), States: states, Connected: connected,
 		Now: a.now(), View: a.view, Page: a.page, Pending: map[string]float64{},
 		Armed:   a.armed,
 		History: a.src.History(), Battery: a.battery, Events: a.src.Events(),
@@ -174,7 +175,7 @@ func (a *App) render(flash bool) {
 	w, h := a.disp.Size()
 	old := a.frame
 	next := ui.Render(a.model(), w, h)
-	a.frame, a.page = next, next.Page
+	a.frame, a.view, a.page = next, next.View, next.Page
 
 	var changed []image.Rectangle
 	if old.Image == nil || old.View != next.View || old.Page != next.Page || a.partials >= maxPartials {
@@ -268,7 +269,14 @@ func (a *App) tap(p image.Point) (exit bool, delay time.Duration) {
 		a.page = (a.frame.Page + 1) % a.frame.Pages
 		return false, 0
 	case ui.Toggle:
-		a.call(domain, "toggle", act.Entity, nil)
+		service := "toggle"
+		switch domain {
+		case "scene", "script":
+			service = "turn_on"
+		case "button", "input_button":
+			service = "press"
+		}
+		a.call(domain, service, act.Entity, nil)
 	case ui.Power:
 		service := "turn_on"
 		if st.State != "off" {

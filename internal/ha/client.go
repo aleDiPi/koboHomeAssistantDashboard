@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/config"
 )
 
 // State is the current value of one entity.
@@ -46,6 +48,9 @@ const (
 	maxBackoff = 30 * time.Second
 )
 
+// errDashboardChanged restarts the session to load the new pages.
+var errDashboardChanged = errors.New("dashboard changed")
+
 // ErrAuth means Home Assistant rejected the token.
 var ErrAuth = errors.New("token rejected")
 
@@ -53,13 +58,10 @@ var ErrAuth = errors.New("token rejected")
 // its own.
 type Client struct {
 	url, token string
-	entities   []string
-	// Graphed lists the sensors whose history is fetched; set before Run.
-	Graphed []string
-	history map[string][]Point
-	// Calendars lists the calendars whose events are fetched; set before Run.
-	Calendars []string
-	events    []Event
+	cfg        config.Config
+	layout     config.Layout
+	history    map[string][]Point
+	events     []Event
 
 	mu        sync.Mutex
 	conn      *wsConn // nil while disconnected
@@ -73,14 +75,22 @@ type Client struct {
 	Changed chan struct{}
 }
 
-func NewClient(baseURL, token string, entities []string) *Client {
+func NewClient(cfg config.Config) *Client {
 	return &Client{
-		url:      websocketURL(baseURL),
-		token:    token,
-		entities: entities,
-		states:   map[string]State{},
-		Changed:  make(chan struct{}, 1),
+		url:     websocketURL(cfg.URL),
+		token:   cfg.Token,
+		cfg:     cfg,
+		layout:  cfg.LocalLayout(),
+		states:  map[string]State{},
+		Changed: make(chan struct{}, 1),
 	}
+}
+
+// Layout returns the pages in use. It is never modified in place.
+func (c *Client) Layout() config.Layout {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.layout
 }
 
 func websocketURL(base string) string {
@@ -120,6 +130,10 @@ func (c *Client) Run(ctx context.Context) {
 	for ctx.Err() == nil {
 		start := time.Now()
 		err := c.session(ctx)
+		if errors.Is(err, errDashboardChanged) {
+			log.Print("home assistant: dashboard changed, reloading")
+			continue
+		}
 		c.mu.Lock()
 		c.conn, c.connected, c.lastErr = nil, false, err
 		c.mu.Unlock()
@@ -151,7 +165,7 @@ type message struct {
 	Type    string          `json:"type"`
 	Success *bool           `json:"success"`
 	Error   json.RawMessage `json:"error"`
-	Event   *entitiesEvent  `json:"event"`
+	Event   json.RawMessage `json:"event"`
 	Result  json.RawMessage `json:"result"`
 }
 
@@ -263,7 +277,24 @@ func (c *Client) session(ctx context.Context) error {
 	c.connected, c.lastErr = true, nil
 	c.states = map[string]State{}
 	c.mu.Unlock()
-	subID, err := c.send(map[string]any{"type": "subscribe_entities", "entity_ids": c.entities})
+
+	updatesID := 0
+	if c.cfg.Dashboard != "" {
+		layout, err := c.fetchDashboard(w)
+		if err != nil {
+			return err
+		}
+		c.mu.Lock()
+		c.layout = layout
+		c.mu.Unlock()
+		updatesID, err = c.send(map[string]any{"type": "subscribe_events", "event_type": "lovelace_updated"})
+		if err != nil {
+			return err
+		}
+	}
+	layout := c.Layout()
+	graphed, calendars := layout.Graphed(), layout.CalendarIDs()
+	subID, err := c.send(map[string]any{"type": "subscribe_entities", "entity_ids": c.cfg.Watched(layout)})
 	if err != nil {
 		return err
 	}
@@ -271,19 +302,19 @@ func (c *Client) session(ctx context.Context) error {
 
 	var historyID atomic.Int64
 	fetchHistory := func() error {
-		if len(c.Graphed) == 0 {
+		if len(graphed) == 0 {
 			return nil
 		}
-		id, err := c.send(historyRequest(c.Graphed, time.Now()))
+		id, err := c.send(historyRequest(graphed, time.Now()))
 		historyID.Store(int64(id))
 		return err
 	}
 	var eventsID atomic.Int64
 	fetchEvents := func() error {
-		if len(c.Calendars) == 0 {
+		if len(calendars) == 0 {
 			return nil
 		}
-		id, err := c.send(calendarRequest(c.Calendars, time.Now()))
+		id, err := c.send(calendarRequest(calendars, time.Now()))
 		eventsID.Store(int64(id))
 		return err
 	}
@@ -323,11 +354,24 @@ func (c *Client) session(ctx context.Context) error {
 			return err
 		}
 		switch {
-		case m.Type == "event" && m.ID == subID && m.Event != nil:
+		case m.Type == "event" && m.ID == subID:
+			var ev entitiesEvent
+			if err := json.Unmarshal(m.Event, &ev); err != nil {
+				return err
+			}
 			c.mu.Lock()
-			apply(c.states, m.Event)
+			apply(c.states, &ev)
 			c.mu.Unlock()
 			c.notify()
+		case m.Type == "event" && updatesID != 0 && m.ID == updatesID:
+			var ev struct {
+				Data struct {
+					URLPath string `json:"url_path"`
+				} `json:"data"`
+			}
+			if json.Unmarshal(m.Event, &ev) == nil && ev.Data.URLPath == c.cfg.Dashboard {
+				return errDashboardChanged
+			}
 		case m.Type == "result" && int64(m.ID) == historyID.Load() && m.Success != nil && *m.Success:
 			history, err := parseHistory(m.Result)
 			if err != nil {
@@ -354,6 +398,36 @@ func (c *Client) session(ctx context.Context) error {
 			}
 			log.Printf("home assistant: command %d failed: %s", m.ID, m.Error)
 		}
+	}
+}
+
+// fetchDashboard reads the pages from Home Assistant. It runs before any
+// subscription, so the next result on the wire answers it. A dashboard that is
+// missing or unusable leaves the lists of the configuration file in charge.
+func (c *Client) fetchDashboard(w *wsConn) (config.Layout, error) {
+	local := c.cfg.LocalLayout()
+	id, err := c.send(map[string]any{"type": "lovelace/config", "url_path": c.cfg.Dashboard, "force": false})
+	if err != nil {
+		return local, err
+	}
+	for {
+		var m message
+		if err := readJSON(w, &m); err != nil {
+			return local, err
+		}
+		if m.ID != id || m.Type != "result" {
+			continue
+		}
+		if m.Success == nil || !*m.Success {
+			log.Printf("home assistant: dashboard %q: %s", c.cfg.Dashboard, m.Error)
+			return local, nil
+		}
+		layout, err := parseDashboard(m.Result)
+		if err != nil {
+			log.Printf("home assistant: dashboard %q: %v", c.cfg.Dashboard, err)
+			return local, nil
+		}
+		return layout, nil
 	}
 }
 

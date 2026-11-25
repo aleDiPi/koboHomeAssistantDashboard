@@ -35,6 +35,15 @@ func drawWindow(f *Frame, m Model, b block, name string, st ha.State, available 
 	e := b.item.Entity
 	cover := strings.HasPrefix(e, "cover.")
 	state, open := windowState(st)
+	class := st.String("device_class")
+	opening := cover || class == "window" || class == "door" || class == "opening" || class == "garage_door"
+	if !opening {
+		// Any other binary sensor.
+		state = "Non attivo"
+		if open {
+			state = "Attivo"
+		}
+	}
 	if !available {
 		state, open = "non disponibile", false
 	}
@@ -56,6 +65,9 @@ func drawWindow(f *Frame, m Model, b block, name string, st ha.State, available 
 		fg = midGray
 	}
 	card(img, badge, 32, 0, bg, bg)
+	if !opening {
+		symbol = iconName(b.item.Icon, st.String("icon"), "radiobox-blank")
+	}
 	icon(img, symbol, 44, badge.Min.X+32, cy, fg)
 	box := image.Rect(badge.Max.X+14, info.Min.Y, r.Max.X-12, info.Max.Y)
 	text(img, face(true, 26), name, box, cy-14, left, black)

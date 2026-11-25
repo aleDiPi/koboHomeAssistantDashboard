@@ -12,7 +12,7 @@ import (
 
 func TestOnlyActiveNotices(t *testing.T) {
 	m := Model{
-		Config: config.Config{Notifications: []config.Item{
+		Layout: config.Layout{Notifications: []config.Item{
 			{Entity: "binary_sensor.window", Name: "Window"},
 			{Entity: "cover.roof", Name: "Roof"},
 			{Entity: "binary_sensor.closed", Name: "Closed"},
@@ -97,5 +97,26 @@ func TestIcons(t *testing.T) {
 	}
 	if c := ink.Min.Add(ink.Max).Div(2); ink.Dy() < 30 || c.X < 44 || c.X > 56 || c.Y < 42 || c.Y > 58 {
 		t.Errorf("icon drawn at %v", ink)
+	}
+}
+
+// A page mixing every kind of entity must keep all of them on screen.
+func TestFlowKeepsEverythingInside(t *testing.T) {
+	items := func(n int) []config.Item { return make([]config.Item, n) }
+	p := config.Page{Sensors: items(5), Lights: items(9), Climate: items(3), Windows: items(4), Calendars: items(1)}
+	area := body(1024, 758)
+	blocks, sheets := flow(p, area, true)
+	if len(blocks) != 5+9+3+4+1 || sheets < 2 {
+		t.Fatalf("%d blocks on %d sheets", len(blocks), sheets)
+	}
+	for i, b := range blocks {
+		if !b.rect.In(area) {
+			t.Errorf("block %d outside: %v", i, b.rect)
+		}
+		for _, o := range blocks[:i] {
+			if o.page == b.page && o.rect.Overlaps(b.rect) {
+				t.Errorf("overlap %v %v", o.rect, b.rect)
+			}
+		}
 	}
 }

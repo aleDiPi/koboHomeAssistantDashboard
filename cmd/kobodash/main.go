@@ -67,13 +67,7 @@ func run() error {
 		if cfg.Token == "" {
 			return errors.New("no token: set it in [homeassistant] of " + *cfgPath)
 		}
-		client := ha.NewClient(cfg.URL, cfg.Token, cfg.Entities())
-		for _, it := range cfg.Sensors {
-			client.Graphed = append(client.Graphed, it.Entity)
-		}
-		for _, it := range cfg.Calendars {
-			client.Calendars = append(client.Calendars, it.Entity)
-		}
+		client := ha.NewClient(cfg)
 		go client.Run(ctx)
 		src = client
 	}

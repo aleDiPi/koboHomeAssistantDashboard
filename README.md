@@ -26,6 +26,21 @@ non ci sia già un `KoboRoot.tgz` (un aggiornamento in attesa).
 - La dashboard parte circa 30 secondi dopo l'accensione.
 - Dopo **Esci**, o dopo un errore, l'avvio successivo resta nell'interfaccia Kobo.
 
+## Schermate da Home Assistant
+
+Con `dashboard = dashboard-kobo` in `[homeassistant]` le schermate si modificano
+dall'interfaccia di Home Assistant, senza cavo:
+
+- ogni **vista** della dashboard è una pagina (al massimo 6), nell'ordine in cui
+  appare;
+- di ogni **scheda** contano le entità, i nomi e le icone: sensori → grafico,
+  luci/interruttori/scene → pulsante, climate → controllo clima,
+  cover/binary_sensor → finestra o stato, calendar → calendario;
+- i **badge** delle viste diventano le etichette di avviso.
+
+Le modifiche arrivano al Kobo appena salvate. Se la dashboard non si può
+leggere, valgono le liste di `dashboard.ini`.
+
 ## Schermate
 
 I pulsanti in basso passano tra **Casa** (grafici delle temperature e
