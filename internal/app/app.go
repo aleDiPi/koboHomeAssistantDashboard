@@ -150,7 +150,7 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 				// A record of the drain, to size the power supply.
 				a.batteryLog = now
 				if level := kobo.Battery(); level >= 0 {
-					log.Printf("battery %d%%", level)
+					log.Printf("battery %d%% %s", level, kobo.BatteryStatus())
 				}
 			}
 			if a.returnHome(now) {

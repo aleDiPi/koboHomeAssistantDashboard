@@ -19,6 +19,12 @@ const (
 	powerExtended = "/sys/power/state-extended"
 )
 
+// BatteryStatus is the raw charging state, for the log.
+func BatteryStatus() string {
+	b, _ := os.ReadFile(batteryStatus)
+	return strings.TrimSpace(string(b))
+}
+
 // Plugged reports whether the device is on external power. Unknown counts as
 // plugged, so that a surprise never sends the device to sleep.
 func Plugged() bool {

@@ -46,6 +46,7 @@ const (
 	pingEvery  = 30 * time.Second
 	idleLimit  = 75 * time.Second
 	maxBackoff = 30 * time.Second
+	retryFetch = 30 * time.Second
 )
 
 // errDashboardChanged restarts the session to load the new pages.
@@ -398,6 +399,23 @@ func (c *Client) session(ctx context.Context) error {
 			c.events = events
 			c.mu.Unlock()
 			c.notify()
+		case m.Type == "result" && m.Success != nil && !*m.Success && (int64(m.ID) == historyID.Load() || int64(m.ID) == eventsID.Load()):
+			// While Home Assistant is still starting, history and calendars
+			// are not there yet: ask again soon.
+			log.Printf("home assistant: command %d failed, retrying: %s", m.ID, m.Error)
+			again := fetchHistory
+			if int64(m.ID) == eventsID.Load() {
+				again = fetchEvents
+			}
+			time.AfterFunc(retryFetch, func() {
+				select {
+				case <-done:
+				default:
+					if err := again(); err != nil {
+						w.Close()
+					}
+				}
+			})
 		case m.Type == "result" && m.Success != nil && !*m.Success:
 			if m.ID == subID {
 				return fmt.Errorf("subscription refused: %s", m.Error)
@@ -425,6 +443,11 @@ func (c *Client) fetchDashboard(w *wsConn) (config.Layout, error) {
 			continue
 		}
 		if m.Success == nil || !*m.Success {
+			// Right after a restart the command does not exist yet: try the
+			// whole session again rather than showing the local pages.
+			if strings.Contains(string(m.Error), "unknown_command") {
+				return local, errors.New("Home Assistant is still starting")
+			}
 			log.Printf("home assistant: dashboard %q: %s", c.cfg.Dashboard, m.Error)
 			return local, nil
 		}
