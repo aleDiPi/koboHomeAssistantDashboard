@@ -4,3 +4,6 @@ dashboard.ini
 /dist/
 /.tools/
 *.log
+
+# Kobo backup: personal data
+/backup/

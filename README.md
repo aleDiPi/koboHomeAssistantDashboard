@@ -4,8 +4,16 @@ Pannello touch per Home Assistant su un Kobo Glo (N613). Un programma Go statico
 disegna direttamente sul framebuffer e-ink, legge il touch e riceve gli stati in
 tempo reale dalla WebSocket API.
 
-Stato: prima versione (luci, condizionatori/termostati, sensori). **Non ancora
-provata sul dispositivo.**
+Stato: prima versione (luci, condizionatori/termostati, sensori), provata su un
+Glo con firmware 4.20.14622: schermo, touch e comandi funzionano.
+
+## Installazione sul Kobo
+
+1. Installa [NickelMenu](https://github.com/pgaskin/NickelMenu).
+2. Copia `dist/kobodash`, `kobo/start.sh` e `dashboard.ini` in `.adds/kobodash/`.
+3. Copia `kobo/nickelmenu` come `.adds/nm/kobodash`.
+4. Con il Wi-Fi connesso, apri **Dashboard** dal menu. **Esci** (due tocchi)
+   riavvia il Kobo.
 
 ## Provarla sul PC
 
