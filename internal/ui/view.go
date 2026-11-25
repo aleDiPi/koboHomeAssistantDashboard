@@ -69,7 +69,7 @@ type Model struct {
 	// Target temperatures chosen by the user and not yet confirmed.
 	Pending map[string]float64
 	// Armed is the action waiting for a confirming second touch.
-	Armed Action
+	Armed   Action
 	Battery int // percent, negative if unknown
 }
 
