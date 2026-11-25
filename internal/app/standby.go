@@ -59,7 +59,8 @@ func nap(c config.Power, states map[string]ha.State, plugged bool) time.Duration
 
 // powerSave follows the cable: on battery processor and Wi-Fi rest.
 func (a *App) powerSave(now time.Time) {
-	if !a.cfg.Power.Saving || now.Sub(a.savingChecked) < reportCheck {
+	// Without a battery this is not the device.
+	if !a.cfg.Power.Saving || now.Sub(a.savingChecked) < reportCheck || a.batteryLevel() < 0 {
 		return
 	}
 	a.savingChecked = now
