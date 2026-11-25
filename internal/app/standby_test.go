@@ -11,10 +11,12 @@ import (
 )
 
 type fakePower struct {
-	plugged bool
-	naps    []time.Duration
-	err     error
-	resumed int
+	plugged   bool
+	naps      []time.Duration
+	err       error
+	resumed   int
+	wifiErr   error
+	recovered int
 }
 
 func (f *fakePower) Plugged() bool { return f.plugged }
@@ -23,7 +25,12 @@ func (f *fakePower) Suspend(d time.Duration) error {
 	return f.err
 }
 
-func (f *fakePower) Resume() error { f.resumed++; return nil }
+func (f *fakePower) Resume() error { f.resumed++; return f.wifiErr }
+
+func (f *fakePower) Recover() error {
+	f.recovered++
+	return f.wifiErr
+}
 
 func TestNapDependsOnPresenceAndPower(t *testing.T) {
 	c := config.Default().Power
@@ -87,10 +94,30 @@ func TestFailedSuspendIsNotRetriedAtOnce(t *testing.T) {
 	a.cfg.Power.Standby = true
 	power := &fakePower{err: errors.New("no")}
 	a.power = power
-	now := time.Now().Add(time.Hour)
+	now := time.Now()
 	a.standby(now)
 	a.standby(now.Add(time.Second))
 	if len(power.naps) != 1 {
 		t.Fatalf("naps %v", power.naps)
+	}
+}
+
+// If Wi-Fi does not come back, no more suspends: stay awake and keep trying.
+func TestLostWifiStopsStandby(t *testing.T) {
+	a, _, _ := testApp(ui.Home)
+	a.cfg.Power.Standby = true
+	power := &fakePower{wifiErr: errors.New("no route")}
+	a.power = power
+	now := time.Now()
+	a.standby(now)
+	a.standby(now.Add(time.Hour))
+	a.standby(now.Add(2 * time.Hour))
+	if len(power.naps) != 1 || !a.wifiLost || power.recovered < 2 {
+		t.Fatalf("naps %v, lost %v, recoveries %d", power.naps, a.wifiLost, power.recovered)
+	}
+	power.wifiErr = nil
+	a.standby(now.Add(3 * time.Hour))
+	if a.wifiLost {
+		t.Fatal("did not notice that Wi-Fi came back")
 	}
 }

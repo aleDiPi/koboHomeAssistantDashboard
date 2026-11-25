@@ -1,6 +1,7 @@
 package kobo
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -83,3 +84,12 @@ func Suspend(d time.Duration) error {
 
 // Resume brings Wi-Fi back. It does nothing if it is already up.
 func Resume() error { return wifi("wifi_up") }
+
+// Recover takes Wi-Fi down and up again.
+func Recover() error {
+	down := wifi("wifi_down")
+	if err := wifi("wifi_up"); err != nil {
+		return errors.Join(err, down)
+	}
+	return nil
+}

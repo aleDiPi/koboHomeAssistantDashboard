@@ -78,6 +78,8 @@ type App struct {
 	reportChecked time.Time
 	saving        *bool // nil until applied
 	savingChecked time.Time
+	wifiLost      bool // Wi-Fi did not come back from a suspend
+	retryWifi     time.Time
 	picture       *image.Gray // of the standby screen, nil if none
 	pictures      []string
 	picturePath   string
@@ -211,6 +213,9 @@ func (a *App) model() ui.Model {
 		m.Status = "Non connesso"
 	default:
 		m.Status = "Connessione…"
+	}
+	if a.wifiLost {
+		m.Connected, m.Status = false, "Wi-Fi perso · Esci per riavviare"
 	}
 	for id, p := range a.temps {
 		if v, ok := states[id].Float("temperature"); ok && p.sent && math.Abs(v-p.value) < 0.01 {

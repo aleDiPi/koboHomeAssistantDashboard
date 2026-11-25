@@ -60,7 +60,9 @@ func sensors(s deviceState) []ha.Sensor {
 			Attr: attr("Kobo alimentazione", "device_class", "plug")},
 		{Entity: "sensor.kobo_modalita", State: mode, Attr: attr("Kobo modalità", "icon", "mdi:sleep")},
 	}
-	if s.voltage > 0 {
+	// The Glo reports a percentage where the voltage should be: publish only
+	// what can be the voltage of a lithium cell.
+	if s.voltage >= 2.5 && s.voltage <= 5 {
 		out = append(out, ha.Sensor{Entity: "sensor.kobo_tensione_batteria", State: strconv.FormatFloat(s.voltage, 'f', 2, 64),
 			Attr: attr("Kobo tensione batteria", "unit_of_measurement", "V", "device_class", "voltage", "state_class", "measurement")})
 	}

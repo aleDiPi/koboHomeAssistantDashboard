@@ -18,12 +18,15 @@ type Power interface {
 	Suspend(time.Duration) error
 	// Resume restores what Suspend took down.
 	Resume() error
+	// Recover restarts Wi-Fi from scratch.
+	Recover() error
 }
 
 type device struct{}
 
 func (device) Plugged() bool                 { return kobo.Plugged() }
 func (device) Suspend(d time.Duration) error { return kobo.Suspend(d) }
+func (device) Recover() error                { return kobo.Recover() }
 func (device) Resume() error                 { return kobo.Resume() }
 
 const (
@@ -35,6 +38,7 @@ const (
 	startGrace = 2 * time.Minute
 	// After a failed suspend, leave the device awake for a while.
 	retryAfter = 10 * time.Minute
+	wifiRetry  = 3 * time.Minute
 )
 
 // nap decides how long to sleep between two refreshes; zero means stay awake.
@@ -78,6 +82,19 @@ func (a *App) powerSave(now time.Time) {
 
 // standby sleeps when it is time to. It is called regularly.
 func (a *App) standby(now time.Time) {
+	if a.wifiLost {
+		if now.After(a.retryWifi) {
+			a.retryWifi = now.Add(wifiRetry)
+			if err := a.power.Recover(); err != nil {
+				log.Printf("wifi: %v", err)
+			} else {
+				log.Print("wifi is back")
+				a.wifiLost = false
+				a.src.Reconnect()
+			}
+		}
+		return
+	}
 	if a.power == nil || now.Before(a.awakeUntil) || len(a.temps) > 0 || a.armed.Kind != ui.None {
 		return
 	}
@@ -103,10 +120,10 @@ func (a *App) standby(now time.Time) {
 		a.asleep = false
 		return
 	}
-	a.sleep(now, d)
+	a.sleep(d)
 }
 
-func (a *App) sleep(asleepAt time.Time, d time.Duration) {
+func (a *App) sleep(d time.Duration) {
 	// The screensaver stays on the panel while the device sleeps.
 	a.asleep, a.view, a.page = true, ui.Home, 0
 	a.pickPicture()
@@ -123,18 +140,31 @@ func (a *App) sleep(asleepAt time.Time, d time.Duration) {
 	start := time.Now().Round(0)
 	err := a.power.Suspend(d)
 	slept := time.Now().Round(0).Sub(start)
-	now := asleepAt.Add(slept)
+	// A fresh reading: the monotonic part of an earlier one did not advance
+	// during the suspend, and would put every deadline in the future.
+	now := time.Now()
 	// Waking well before the alarm means somebody pressed the button: say at
 	// once that it was heard, as Wi-Fi takes a while.
 	button := err == nil && slept < d-10*time.Second
 	if button {
 		a.showWaking()
 	}
-	if e := a.power.Resume(); e != nil {
-		log.Printf("standby: %v", e)
+	wifiErr := a.power.Resume()
+	if wifiErr != nil {
+		log.Printf("standby: %v; trying again", wifiErr)
+		wifiErr = a.power.Recover()
 	}
 	a.src.Reconnect()
 	a.saving = nil
+	if wifiErr != nil {
+		// Without Wi-Fi the dashboard is useless and another suspend would not
+		// help: stay awake, keep trying, and say what is going on.
+		log.Printf("standby disabled, no Wi-Fi: %v", wifiErr)
+		a.wifiLost, a.retryWifi = true, now.Add(wifiRetry)
+		a.userWake(now)
+		a.render(true)
+		return
+	}
 	if err != nil {
 		log.Printf("standby failed: %v", err)
 		a.asleep, a.awakeUntil = false, now.Add(retryAfter)

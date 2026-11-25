@@ -22,6 +22,9 @@ wifi_up() {
     fi
     wait_for 10 test -e "/sys/class/net/$interface" || echo "no $interface"
     ifconfig "$interface" up
+    # The Broadcom chip of the Glo stays deaf until told to come up: without
+    # this wpa_supplicant scans forever (KOReader does the same).
+    broadcom up
 
     conf=/etc/wpa_supplicant/wpa_supplicant.conf
     [ -f /mnt/onboard/.kobo/wpa_supplicant.conf ] && conf=/mnt/onboard/.kobo/wpa_supplicant.conf
@@ -45,6 +48,12 @@ wifi_up() {
         wpa_cli -i "$interface" status
         return 1
     fi
+}
+
+# broadcom up|down: only for the "dhd" driver.
+broadcom() {
+    [ "$WIFI_MODULE" = "dhd" ] || return 0
+    wlarm_le -i "${INTERFACE:-eth0}" "$1" || echo "wlarm_le $1 failed"
 }
 
 # wait_for SECONDS COMMAND...: retries the command once a second.
@@ -74,6 +83,7 @@ wifi_down() {
     killall -q udhcpc default.script dhcpcd
     wpa_cli -i "$interface" terminate
     killall -q wpa_supplicant
+    broadcom down
     ifconfig "$interface" down
     sleep 1
     if grep -q "^$WIFI_MODULE " /proc/modules; then
