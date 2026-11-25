@@ -66,6 +66,28 @@ Design Icons, vedi `internal/ui/mdi/LICENSE.txt`).
 Le entità in `[notifications]` compaiono come etichette nell'intestazione solo
 quando sono `on` o `open`; quelle che non ci stanno sono contate in "+N".
 
+## Standby
+
+Con `standby = true` in `[power]`:
+
+| Situazione | Comportamento |
+| --- | --- |
+| In casa, alimentato | sempre acceso |
+| In casa, a batteria | dorme; si aggiorna ogni `home_refresh` |
+| Nessuno in casa | dorme; si aggiorna ogni `away_refresh` |
+
+Dorme dopo `idle` senza tocchi. Mentre dorme il touch non risponde: premi il
+tasto di accensione. Lo schermo mostra "Standby" con l'ora dell'ultimo
+aggiornamento.
+
+## Sensori in Home Assistant
+
+Con `report = true` compaiono `sensor.kobo_batteria`,
+`binary_sensor.kobo_alimentazione`, `sensor.kobo_modalita` e
+`sensor.kobo_luce`. Alimentato li aggiorna a ogni cambiamento (almeno ogni
+minuto); a batteria solo ogni `report_on_battery`. Dopo un riavvio di Home
+Assistant ricompaiono al primo invio.
+
 ## Luce dello schermo
 
 Sezione `[frontlight]` di `dashboard.ini`: spenta di giorno; dopo il tramonto al

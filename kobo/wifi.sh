@@ -34,3 +34,26 @@ wifi_up() {
         udhcpc -S -i "$interface" -s /etc/udhcpc.d/default.script -b -q
     fi
 }
+
+# Takes Wi-Fi down completely before a suspend. Refuses (and so cancels the
+# suspend) if the driver cannot be unloaded: sleeping with it loaded can crash
+# the kernel.
+wifi_down() {
+    interface=${INTERFACE:-eth0}
+    if [ -z "$WIFI_MODULE" ]; then
+        echo "unknown Wi-Fi driver"
+        return 1
+    fi
+    killall -q udhcpc default.script dhcpcd
+    wpa_cli -i "$interface" terminate
+    ifconfig "$interface" down
+    sleep 1
+    if grep -q "^$WIFI_MODULE " /proc/modules; then
+        rmmod "$WIFI_MODULE" || return 1
+    fi
+    if grep -q "^sdio_wifi_pwr " /proc/modules; then
+        rmmod sdio_wifi_pwr
+    else
+        ./kobodash -wifi-power off
+    fi
+}

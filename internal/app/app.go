@@ -27,6 +27,10 @@ type Source interface {
 	Events() []ha.Event
 	Layout() config.Layout
 	Call(domain, service, entity string, data map[string]any) error
+	// Reconnect starts afresh after the device has slept.
+	Reconnect()
+	// Report publishes the sensors of the device.
+	Report([]ha.Sensor) error
 }
 
 const (
@@ -61,19 +65,40 @@ type App struct {
 
 	lastTouch  time.Time
 	rendered   time.Time
-	light      int // frontlight level in use, -1 before the first one
-	battery    int
-	batteryLog time.Time
+	power      Power // nil when standby is not possible
+	asleep     bool  // showing the standby notice
+	waking     bool  // waiting for fresh data after a suspend
+	wakeLimit  time.Time
+	awakeUntil time.Time
+	buttons    <-chan struct{}
+
+	batteryLevel  func() int
+	plugged       func() bool
+	reported      time.Time
+	reportChecked time.Time
+	sent          deviceState
+	light         int // frontlight level in use, -1 before the first one
+	battery       int
+	batteryLog    time.Time
 }
 
 func New(cfg config.Config, src Source, disp screen.Display, loc *time.Location) *App {
-	return &App{cfg: cfg, src: src, disp: disp, loc: loc, temps: map[string]*pending{}, light: -1, battery: -1}
+	return &App{cfg: cfg, src: src, disp: disp, loc: loc, temps: map[string]*pending{}, light: -1, battery: -1,
+		batteryLevel: kobo.Battery, plugged: kobo.Plugged}
+}
+
+// EnableStandby lets the device sleep; button reports presses of the power
+// button while it is awake.
+func (a *App) EnableStandby(button <-chan struct{}) {
+	a.power, a.buttons = device{}, button
 }
 
 // Run serves taps and updates until the user taps "Esci" twice or ctx ends.
 func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 	a.battery = kobo.Battery()
-	a.updateLight(time.Now())
+	a.lastTouch = time.Now()
+	a.awakeUntil = a.lastTouch.Add(startGrace)
+	a.updateLight(time.Time{})
 	a.render(true)
 	redraw := time.NewTimer(time.Hour)
 	var redrawAt time.Time
@@ -97,13 +122,18 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			a.updateLight(time.Now())
 		case <-redraw.C:
 			redrawAt = time.Time{}
-			a.render(false)
+			// Just woken, the screen keeps the old picture until there is news.
+			if !a.waking {
+				a.render(false)
+			}
+		case <-a.buttons:
+			a.userWake(time.Now())
+			schedule(0)
 		case p, ok := <-taps:
 			if !ok {
 				return errors.New("touch input lost")
 			}
-			a.lastTouch = time.Now()
-			a.updateLight(a.lastTouch)
+			a.userWake(time.Now())
 			exit, delay := a.tap(p)
 			if exit {
 				return nil
@@ -127,6 +157,8 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			if a.frame.Countdown && now.Sub(a.rendered) >= ui.CountdownStep {
 				schedule(0)
 			}
+			a.report(now)
+			a.standby(now)
 			if a.flushTemps(now) {
 				schedule(0)
 			}
@@ -154,6 +186,7 @@ func (a *App) model() ui.Model {
 		Layout: a.src.Layout(), States: states, Connected: connected,
 		Now: a.now(), View: a.view, Page: a.page, Pending: map[string]float64{},
 		Armed:   a.armed,
+		Standby: a.asleep,
 		History: a.src.History(), Battery: a.battery, Events: a.src.Events(),
 	}
 	switch {

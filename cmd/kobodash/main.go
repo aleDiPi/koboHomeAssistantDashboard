@@ -74,6 +74,7 @@ func run() error {
 
 	var disp screen.Display
 	var taps <-chan image.Point
+	var button <-chan struct{}
 	if *simAddr != "" {
 		disp, taps, err = sim.Start(*simAddr, cfg.Orientation)
 		if err != nil {
@@ -86,10 +87,17 @@ func run() error {
 			return err
 		}
 		taps = readTouch(cfg, *trace)
+		if cfg.Power.Standby {
+			button = readButton()
+		}
 	}
 	defer disp.Close()
 
-	err = app.New(cfg, src, disp, loc).Run(ctx, taps)
+	dashboard := app.New(cfg, src, disp, loc)
+	if button != nil {
+		dashboard.EnableStandby(button)
+	}
+	err = dashboard.Run(ctx, taps)
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return nil
 	}
@@ -119,6 +127,17 @@ func readTouch(cfg config.Config, trace bool) <-chan image.Point {
 				log.Printf("touch: tap raw %v -> screen %v", p, q)
 			}
 			out <- q
+		}
+	}()
+	return out
+}
+
+// readButton reports presses of the power button.
+func readButton() <-chan struct{} {
+	out := make(chan struct{}, 1)
+	go func() {
+		if err := touch.ReadPowerKey("/dev/input/event0", out); err != nil {
+			log.Printf("power button: %v", err)
 		}
 	}()
 	return out

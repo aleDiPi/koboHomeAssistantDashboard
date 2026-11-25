@@ -47,3 +47,28 @@ func Read(path string, trace bool, taps chan<- image.Point) error {
 		}
 	}
 }
+
+// ReadPowerKey signals every press of the power button.
+func ReadPowerKey(path string, pressed chan<- struct{}) error {
+	const keyPower = 116
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	buf := make([]byte, eventSize)
+	for {
+		if _, err := io.ReadFull(f, buf); err != nil {
+			return err
+		}
+		typ := binary.LittleEndian.Uint16(buf[timeSize:])
+		code := binary.LittleEndian.Uint16(buf[timeSize+2:])
+		value := binary.LittleEndian.Uint32(buf[timeSize+4:])
+		if typ == evKey && code == keyPower && value == 1 {
+			select {
+			case pressed <- struct{}{}:
+			default:
+			}
+		}
+	}
+}

@@ -84,6 +84,12 @@ func (d *Demo) Updates() <-chan struct{} { return d.updates }
 // Layout is the one of the configuration file.
 func (d *Demo) Layout() config.Layout { return d.layout }
 
+// Reconnect has nothing to do without a server.
+func (d *Demo) Reconnect() {}
+
+// Report discards the sensors: there is no server.
+func (d *Demo) Report([]ha.Sensor) error { return nil }
+
 // Events invents a few appointments.
 func (d *Demo) Events() []ha.Event {
 	now := time.Now().Truncate(time.Hour)

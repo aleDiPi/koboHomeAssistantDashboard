@@ -40,6 +40,7 @@ type Config struct {
 	TouchMirrorY bool
 
 	Frontlight Frontlight
+	Power      Power
 
 	// Shown as chips in the header while on (or open).
 	Notifications []Item
@@ -63,6 +64,20 @@ type Frontlight struct {
 	Sun          string
 }
 
+// Power controls standby.
+type Power struct {
+	Standby bool
+	// People (or trackers) whose being "home" means somebody can look at it.
+	Presence    []string
+	Idle        time.Duration // without touches before sleeping
+	HomeRefresh time.Duration // at home, on battery
+	AwayRefresh time.Duration // with nobody at home
+	// Report publishes battery, power and light to Home Assistant; on battery
+	// only every ReportOnBattery (0 = never).
+	Report          bool
+	ReportOnBattery time.Duration
+}
+
 // Default returns the settings that match a Kobo Glo (N613).
 func Default() Config {
 	return Config{
@@ -75,6 +90,7 @@ func Default() Config {
 		TouchDevice:      "/dev/input/event1",
 		TouchSwapXY:      true,
 		TouchMirrorX:     true,
+		Power:            Power{Idle: 2 * time.Minute, HomeRefresh: 5 * time.Minute, AwayRefresh: 15 * time.Minute, ReportOnBattery: 15 * time.Minute},
 		Frontlight: Frontlight{
 			Manage: true, NightLevel: 1, TouchLevel: 15,
 			TouchTime: 30 * time.Second, Sun: "sun.sun",
@@ -104,7 +120,7 @@ func Parse(r io.Reader) (Config, error) {
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section = strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
 			switch section {
-			case "homeassistant", "display", "touch", "frontlight", "notifications", "calendar", "windows", "actions", "sensors", "lights", "climate":
+			case "homeassistant", "display", "touch", "frontlight", "power", "notifications", "calendar", "windows", "actions", "sensors", "lights", "climate":
 			default:
 				return c, fmt.Errorf("line %d: unknown section [%s]", n, section)
 			}
@@ -196,6 +212,20 @@ func (c *Config) set(section, key, val string) error {
 		c.TouchMirrorX, err = strconv.ParseBool(val)
 	case "touch.mirror_y":
 		c.TouchMirrorY, err = strconv.ParseBool(val)
+	case "power.report":
+		c.Power.Report, err = strconv.ParseBool(val)
+	case "power.report_on_battery":
+		c.Power.ReportOnBattery, err = time.ParseDuration(val)
+	case "power.standby":
+		c.Power.Standby, err = strconv.ParseBool(val)
+	case "power.presence":
+		c.Power.Presence = strings.Fields(strings.ReplaceAll(val, ",", " "))
+	case "power.idle":
+		c.Power.Idle, err = atLeast(val, 30*time.Second)
+	case "power.home_refresh":
+		c.Power.HomeRefresh, err = atLeast(val, time.Minute)
+	case "power.away_refresh":
+		c.Power.AwayRefresh, err = atLeast(val, time.Minute)
 	case "frontlight.manage":
 		c.Frontlight.Manage, err = strconv.ParseBool(val)
 	case "frontlight.night_level":
@@ -220,4 +250,13 @@ func percent(val string) (int, error) {
 		err = fmt.Errorf("%d is not between 0 and 100", v)
 	}
 	return v, err
+}
+
+// atLeast parses a duration the alarm clock of the device can handle.
+func atLeast(val string, low time.Duration) (time.Duration, error) {
+	d, err := time.ParseDuration(val)
+	if err == nil && (d < low || d > 18*time.Hour) {
+		err = fmt.Errorf("%v is not between %v and 18h", d, low)
+	}
+	return d, err
 }

@@ -70,6 +70,8 @@ type Client struct {
 	connected bool
 	lastErr   error
 
+	kick chan struct{} // cuts the wait before reconnecting
+
 	// Changed receives a value (without blocking) whenever states or the
 	// connection status change.
 	Changed chan struct{}
@@ -83,6 +85,7 @@ func NewClient(cfg config.Config) *Client {
 		layout:  cfg.LocalLayout(),
 		states:  map[string]State{},
 		Changed: make(chan struct{}, 1),
+		kick:    make(chan struct{}, 1),
 	}
 }
 
@@ -153,6 +156,9 @@ func (c *Client) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(backoff):
+		case <-c.kick:
+			backoff = time.Second
+			continue
 		}
 		if backoff < maxBackoff {
 			backoff *= 2
@@ -457,6 +463,22 @@ func (c *Client) Call(domain, service, entity string, data map[string]any) error
 	}
 	_, err := c.send(msg)
 	return err
+}
+
+// Reconnect drops the connection and dials again at once: after a suspend the
+// old one is dead but would take a minute to be noticed.
+func (c *Client) Reconnect() {
+	c.mu.Lock()
+	conn := c.conn
+	c.connected = false
+	c.mu.Unlock()
+	if conn != nil {
+		conn.Close()
+	}
+	select {
+	case c.kick <- struct{}{}:
+	default:
+	}
 }
 
 // Updates is signalled whenever Snapshot would return something new.
