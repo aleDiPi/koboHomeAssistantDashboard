@@ -1,0 +1,6 @@
+# local configuration: contains the Home Assistant token
+dashboard.ini
+# build output and local toolchain
+/dist/
+/.tools/
+*.log
