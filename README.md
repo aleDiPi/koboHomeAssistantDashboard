@@ -26,6 +26,11 @@ non ci sia già un `KoboRoot.tgz` (un aggiornamento in attesa).
 - La dashboard parte circa 30 secondi dopo l'accensione.
 - Dopo **Esci**, o dopo un errore, l'avvio successivo resta nell'interfaccia Kobo.
 
+## Avvisi
+
+Le entità in `[notifications]` compaiono come etichette nell'intestazione solo
+quando sono `on` o `open`; quelle che non ci stanno sono contate in "+N".
+
 ## Luce dello schermo
 
 Sezione `[frontlight]` di `dashboard.ini`: spenta di giorno; dopo il tramonto al

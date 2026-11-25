@@ -34,6 +34,9 @@ type Config struct {
 
 	Frontlight Frontlight
 
+	// Shown as chips in the header while on (or open).
+	Notifications []Item
+
 	Sensors []Item
 	Lights  []Item
 	Climate []Item
@@ -72,7 +75,7 @@ func Default() Config {
 func (c Config) Entities() []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, list := range [][]Item{c.Sensors, c.Lights, c.Climate} {
+	for _, list := range [][]Item{c.Sensors, c.Lights, c.Climate, c.Notifications} {
 		for _, it := range list {
 			if !seen[it.Entity] {
 				seen[it.Entity] = true
@@ -114,7 +117,7 @@ func Parse(r io.Reader) (Config, error) {
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section = strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
 			switch section {
-			case "homeassistant", "display", "touch", "frontlight", "sensors", "lights", "climate":
+			case "homeassistant", "display", "touch", "frontlight", "notifications", "sensors", "lights", "climate":
 			default:
 				return c, fmt.Errorf("line %d: unknown section [%s]", n, section)
 			}
@@ -124,7 +127,7 @@ func Parse(r io.Reader) (Config, error) {
 		key, val = strings.TrimSpace(key), strings.TrimSpace(val)
 
 		switch section {
-		case "sensors", "lights", "climate":
+		case "sensors", "lights", "climate", "notifications":
 			if !strings.Contains(key, ".") {
 				return c, fmt.Errorf("line %d: %q is not an entity id", n, key)
 			}
@@ -132,6 +135,8 @@ func Parse(r io.Reader) (Config, error) {
 			switch section {
 			case "sensors":
 				c.Sensors = append(c.Sensors, it)
+			case "notifications":
+				c.Notifications = append(c.Notifications, it)
 			case "lights":
 				c.Lights = append(c.Lights, it)
 			default:

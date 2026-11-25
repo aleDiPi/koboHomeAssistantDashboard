@@ -153,9 +153,8 @@ func (f *Frame) region(r image.Rectangle, rad int, a Action) {
 }
 
 var (
-	weekdays = [...]string{"domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"}
-	months   = [...]string{"gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
-		"luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"}
+	weekdays = [...]string{"dom", "lun", "mar", "mer", "gio", "ven", "sab"}
+	months   = [...]string{"gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"}
 )
 
 func drawHeader(f *Frame, m Model, w int) {
@@ -166,8 +165,8 @@ func drawHeader(f *Frame, m Model, w int) {
 	text(img, face(true, 44), m.Now.Format("15:04"), clock, mid, left, black)
 	f.region(clock, 0, Action{})
 
-	date := image.Rect(clock.Max.X+8, 0, clock.Max.X+248, headerHeight)
 	day := fmt.Sprintf("%s %d %s", weekdays[m.Now.Weekday()], m.Now.Day(), months[m.Now.Month()-1])
+	date := image.Rect(clock.Max.X+4, 0, clock.Max.X+4+measure(face(false, 22), day), headerHeight)
 	text(img, face(false, 22), day, date, mid, left, darkGray)
 	f.region(date, 0, Action{})
 
@@ -193,7 +192,7 @@ func drawHeader(f *Frame, m Model, w int) {
 		edge = battery.Min.X - gap
 	}
 
-	status := image.Rect(date.Max.X, 0, edge, headerHeight)
+	status := image.Rect(date.Max.X+14, 0, edge, headerHeight)
 	if status.Empty() {
 		return
 	}
@@ -204,8 +203,63 @@ func drawHeader(f *Frame, m Model, w int) {
 		}
 		card(img, image.Rect(status.Min.X, 14, status.Max.X, headerHeight-12), 22, 0, black, black)
 		text(img, face(true, 22), msg, status.Inset(10), mid, center, white)
+	} else {
+		drawChips(img, status, notices(m))
 	}
 	f.region(status, 0, Action{})
+}
+
+// notices lists the labels of the notifications that are active now.
+func notices(m Model) []string {
+	var out []string
+	for _, it := range m.Config.Notifications {
+		st := m.States[it.Entity]
+		if st.State != "on" && st.State != "open" {
+			continue
+		}
+		name := it.Name
+		if name == "" {
+			name = st.String("friendly_name")
+		}
+		if name == "" {
+			name = it.Entity
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
+// drawChips puts one pill per notice in r; those that do not fit are counted
+// in a last "+N" pill.
+func drawChips(img *image.Gray, r image.Rectangle, labels []string) {
+	const pad, space, countWidth = 14, 8, 56
+	f := face(true, 19)
+	x := r.Min.X
+	chip := func(label string, width int) {
+		box := image.Rect(x, 16, x+width, headerHeight-14)
+		card(img, box, float64(box.Dy())/2, 0, black, black)
+		text(img, f, label, box.Inset(6), headerHeight/2-1, center, white)
+		x = box.Max.X + space
+	}
+	for i, label := range labels {
+		width := measure(f, label) + 2*pad
+		room := r.Max.X - x
+		if i < len(labels)-1 {
+			room -= countWidth + space
+		}
+		if width > room {
+			// A single long notice is shortened rather than hidden.
+			if i == 0 && room > 100 {
+				chip(label, room)
+				i++
+			}
+			if rest := len(labels) - i; rest > 0 {
+				chip(fmt.Sprintf("+%d", rest), countWidth)
+			}
+			return
+		}
+		chip(label, width)
+	}
 }
 
 func drawBattery(img *image.Gray, r image.Rectangle, percent int) {

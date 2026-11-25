@@ -31,6 +31,9 @@ func NewDemo(c config.Config) *Demo {
 		}
 		d.states[it.Entity] = ha.State{State: state, Attr: map[string]any{}}
 	}
+	for _, it := range c.Notifications {
+		d.states[it.Entity] = ha.State{State: "on", Attr: map[string]any{}}
+	}
 	for i, it := range c.Climate {
 		state := "off"
 		if i == 0 {
