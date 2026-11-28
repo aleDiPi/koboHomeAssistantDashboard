@@ -1,3 +1,5 @@
+//go:debug x509usefallbackroots=1
+
 // Command kobodash is a Home Assistant touch dashboard for the Kobo Glo.
 package main
 
@@ -10,9 +12,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 	_ "time/tzdata" // the Kobo has no timezone database
+
+	_ "golang.org/x/crypto/x509roots/fallback" // current certificate roots
 
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/app"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/config"
@@ -21,10 +26,21 @@ import (
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/screen"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/sim"
 	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/touch"
+	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/update"
 )
 
+// version is set when a release is built (see release.ps1).
+var version = "0"
+
+// restartCode tells start.sh that a new version is in place.
+const restartCode = 42
+
 func main() {
-	if err := run(); err != nil {
+	err := run()
+	switch {
+	case errors.Is(err, app.ErrRestart):
+		os.Exit(restartCode)
+	case err != nil:
 		log.Fatal(err)
 	}
 }
@@ -102,6 +118,17 @@ func run() error {
 	}
 	if button != nil {
 		dashboard.EnableStandby(button)
+	}
+	log.Printf("version %s", version)
+	// Only on the device: the simulator has nothing to replace.
+	if cfg.Update.Key != "" && *simAddr == "" && !*demo {
+		current, _ := strconv.ParseInt(version, 10, 64)
+		updater, err := update.New(cfg.Update.URL, cfg.Update.Key, filepath.Dir(exe), current)
+		if err != nil {
+			log.Printf("updates off: %v", err)
+		} else {
+			dashboard.SetUpdater(updater, cfg.Update.CheckEvery)
+		}
 	}
 	err = dashboard.Run(ctx, taps)
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

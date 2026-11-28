@@ -113,3 +113,13 @@ func RenderWaking(w, h int) Frame {
 	text(f.Image, face(false, 28), "Attendi la connessione Wi-Fi", all, h*62/100, center, darkGray)
 	return f
 }
+
+// RenderUpdating stays up while a new version is downloaded and installed.
+func RenderUpdating(w, h int) Frame {
+	f := blank(w, h)
+	all := image.Rect(24, 0, w-24, h)
+	icon(f.Image, "download", 120, w/2, h*30/100, black)
+	text(f.Image, face(true, 54), "Aggiorno la dashboard…", all, h*52/100, center, black)
+	text(f.Image, face(false, 28), "Non spegnere il Kobo: si riavvia da sola", all, h*62/100, center, darkGray)
+	return f
+}

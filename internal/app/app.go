@@ -81,13 +81,22 @@ type App struct {
 	savingChecked time.Time
 	wifiLost      bool // Wi-Fi did not come back from a suspend
 	retryWifi     time.Time
-	picture       *image.Gray // of the standby screen, nil if none
-	pictures      []string
-	picturePath   string
-	sent          deviceState
-	light         int // frontlight level in use, -1 before the first one
-	battery       int
-	batteryLog    time.Time
+
+	updater          Updater // nil when updates are off
+	checkEvery       time.Duration
+	nextCheck        time.Time
+	found            chan bool
+	updateReady      bool
+	updateFailed     bool
+	confirmedVersion bool
+	restart          bool
+	picture          *image.Gray // of the standby screen, nil if none
+	pictures         []string
+	picturePath      string
+	sent             deviceState
+	light            int // frontlight level in use, -1 before the first one
+	battery          int
+	batteryLog       time.Time
 }
 
 func New(cfg config.Config, src Source, disp screen.Display, loc *time.Location) *App {
@@ -138,6 +147,11 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			if !a.waking {
 				a.render(false)
 			}
+		case newer := <-a.found:
+			if newer != a.updateReady {
+				a.updateReady = newer
+				schedule(0)
+			}
 		case <-a.buttons:
 			log.Print("power button")
 			a.userWake(time.Now())
@@ -157,6 +171,9 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			}
 			exit, delay := a.tap(p)
 			if exit {
+				if a.restart {
+					return ErrRestart
+				}
 				log.Print("closed with Esci")
 				return nil
 			}
@@ -180,6 +197,7 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 				schedule(0)
 			}
 			a.powerSave(now)
+			a.checkUpdate(ctx, now)
 			a.report(now)
 			a.standby(now)
 			if a.flushTemps(now) {
@@ -216,6 +234,7 @@ func (a *App) model() ui.Model {
 		Config: a.cfg.Screensaver, Picture: a.picture, Connected: connected,
 		Now: a.now(), View: a.view, Page: a.page, Pending: map[string]float64{},
 		Armed: a.armed, Touch: !a.dark,
+		UpdateReady: a.updateReady, UpdateFailed: a.updateFailed,
 
 		History: a.src.History(), Battery: a.battery, Events: a.src.Events(),
 	}
@@ -333,6 +352,16 @@ func (a *App) tap(p image.Point) (exit bool, delay time.Duration) {
 			return true, 0
 		}
 		a.arm(act)
+		return false, 0
+	case ui.Update:
+		if !confirmed {
+			a.arm(act)
+			return false, 0
+		}
+		if a.install() {
+			a.restart = true
+			return true, 0
+		}
 		return false, 0
 	case ui.OpenCover:
 		if !confirmed {

@@ -41,6 +41,7 @@ type Config struct {
 
 	Frontlight  Frontlight
 	Power       Power
+	Update      Update
 	Screensaver Screensaver
 
 	// Shown as chips in the header while on (or open).
@@ -92,6 +93,13 @@ type Screensaver struct {
 	Outdoor string
 }
 
+// Update says where new versions come from. Without a key it is off.
+type Update struct {
+	URL        string // folder holding version.txt and the signed archive
+	Key        string // Ed25519 public key, base64
+	CheckEvery time.Duration
+}
+
 // Default returns the settings that match a Kobo Glo (N613).
 func Default() Config {
 	return Config{
@@ -106,6 +114,10 @@ func Default() Config {
 		TouchMirrorX:     true,
 		Power:            Power{Idle: 2 * time.Minute, HomeRefresh: 5 * time.Minute, AwayRefresh: 15 * time.Minute, ReportOnBattery: 15 * time.Minute},
 		Screensaver:      Screensaver{Focus: 0.5},
+		Update: Update{
+			URL:        "https://github.com/aleDiPi/koboHomeAssistantDashboard/releases/latest/download",
+			CheckEvery: time.Hour,
+		},
 		Frontlight: Frontlight{
 			Manage: true, NightLevel: 1, TouchLevel: 15,
 			TouchTime: 30 * time.Second, Sun: "sun.sun",
@@ -135,7 +147,7 @@ func Parse(r io.Reader) (Config, error) {
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section = strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
 			switch section {
-			case "homeassistant", "display", "touch", "frontlight", "power", "standby", "notifications", "calendar", "windows", "actions", "sensors", "lights", "climate":
+			case "homeassistant", "display", "touch", "frontlight", "update", "power", "standby", "notifications", "calendar", "windows", "actions", "sensors", "lights", "climate":
 			default:
 				return c, fmt.Errorf("line %d: unknown section [%s]", n, section)
 			}
@@ -244,6 +256,12 @@ func (c *Config) set(section, key, val string) error {
 		c.Screensaver.Indoor = val
 	case "standby.outdoor":
 		c.Screensaver.Outdoor = val
+	case "update.url":
+		c.Update.URL = val
+	case "update.key":
+		c.Update.Key = val
+	case "update.check_every":
+		c.Update.CheckEvery, err = atLeast(val, 5*time.Minute)
 	case "power.standby":
 		c.Power.Standby, err = strconv.ParseBool(val)
 	case "power.presence":

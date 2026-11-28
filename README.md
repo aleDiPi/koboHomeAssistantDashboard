@@ -106,6 +106,24 @@ Sezione `[frontlight]` di `dashboard.ini`: spenta di giorno; dopo il tramonto al
 minimo se le luci indicate sono spente, più forte per qualche secondo dopo un
 tocco.
 
+## Aggiornamenti via Wi-Fi
+
+La dashboard controlla ogni ora l'ultima release su GitHub. Se ce n'è una più
+nuova compare **Aggiorna** in alto: due tocchi la scaricano, la installano e
+riavviano la dashboard. `dashboard.ini` non viene mai toccato.
+
+Ogni release è firmata (Ed25519): il Kobo installa solo ciò che è firmato con
+la tua chiave privata, che resta in `.keys/` sul PC. Se la nuova versione si
+chiude prima di collegarsi a Home Assistant, torna quella precedente.
+
+```powershell
+go run ./tools/release -init    # una volta sola: crea la chiave
+.\release.ps1 -Publish          # compila, firma e pubblica
+```
+
+La prima installazione di questa funzione richiede ancora il cavo (programma,
+`start.sh` e la riga `key` in `[update]`).
+
 ## Provarla sul PC
 
 Con dati finti:

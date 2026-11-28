@@ -29,7 +29,8 @@ const (
 	Show // switch to another view
 	OpenCover
 	CloseCover
-	Run // start a script, scene or button
+	Run    // start a script, scene or button
+	Update // install the new version
 )
 
 // View is the index of one of the pages.
@@ -76,6 +77,8 @@ type Model struct {
 	Battery int // percent, negative if unknown
 	// Touch says that the lock screen opens with a touch (device awake).
 	Touch bool
+	// UpdateReady offers a new version; UpdateFailed says one did not install.
+	UpdateReady, UpdateFailed bool
 }
 
 type Frame struct {
@@ -312,6 +315,19 @@ func drawHeader(f *Frame, m Model, w int) {
 		edge = next.Min.X - gap
 	}
 
+	if m.UpdateReady {
+		button := image.Rect(edge-150, exit.Min.Y, edge, exit.Max.Y)
+		action := Action{Kind: Update}
+		label, waiting := "Aggiorna", m.Armed == action
+		switch {
+		case waiting:
+			label = "Sicuro?"
+		case m.UpdateFailed:
+			label = "Riprova"
+		}
+		pill(f, button, label, waiting, true, action)
+		edge = button.Min.X - gap
+	}
 	if m.Battery >= 0 {
 		battery := image.Rect(edge-110, 0, edge, headerHeight)
 		drawBattery(img, image.Rect(battery.Min.X, mid-9, battery.Min.X+34, mid+9), m.Battery)

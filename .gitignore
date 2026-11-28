@@ -2,6 +2,8 @@
 dashboard.ini
 # build output and local toolchain
 /dist/
+# signing key of the updates: never publish it
+/.keys/
 /standby.*
 /standby/
 /.tools/
