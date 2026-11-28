@@ -3,9 +3,11 @@ package config
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -134,17 +136,41 @@ func Default() Config {
 	}
 }
 
+// SecretsFile, next to the configuration, holds what must not be shared.
+const SecretsFile = "secrets.ini"
+
+// Load reads the configuration and then, if present, the secrets file, whose
+// non-empty values win.
 func Load(path string) (Config, error) {
+	c := Default()
+	if err := parseFile(&c, path, false); err != nil {
+		return c, err
+	}
+	secrets := filepath.Join(filepath.Dir(path), SecretsFile)
+	if err := parseFile(&c, secrets, true); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return c, fmt.Errorf("%s: %w", SecretsFile, err)
+	}
+	return c, nil
+}
+
+func parseFile(c *Config, path string, skipEmpty bool) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return Config{}, err
+		return err
 	}
 	defer f.Close()
-	return Parse(f)
+	return parseInto(c, f, skipEmpty)
 }
 
 func Parse(r io.Reader) (Config, error) {
 	c := Default()
+	err := parseInto(&c, r, false)
+	return c, err
+}
+
+// parseInto applies the file to c. With skipEmpty, a setting left blank keeps
+// the value it had.
+func parseInto(c *Config, r io.Reader, skipEmpty bool) error {
 	section := ""
 	sc := bufio.NewScanner(r)
 	for n := 1; sc.Scan(); n++ {
@@ -158,7 +184,7 @@ func Parse(r io.Reader) (Config, error) {
 			switch section {
 			case "homeassistant", "display", "touch", "frontlight", "update", "power", "standby", "notifications", "calendar", "windows", "actions", "sensors", "lights", "climate":
 			default:
-				return c, fmt.Errorf("line %d: unknown section [%s]", n, section)
+				return fmt.Errorf("line %d: unknown section [%s]", n, section)
 			}
 			continue
 		}
@@ -168,7 +194,7 @@ func Parse(r io.Reader) (Config, error) {
 		switch section {
 		case "sensors", "lights", "climate", "notifications", "calendar", "windows", "actions":
 			if !strings.Contains(key, ".") {
-				return c, fmt.Errorf("line %d: %q is not an entity id", n, key)
+				return fmt.Errorf("line %d: %q is not an entity id", n, key)
 			}
 			// name | mdi:icon | timer, the last two optional and in any order
 			fields := strings.Split(val, "|")
@@ -199,14 +225,17 @@ func Parse(r io.Reader) (Config, error) {
 			continue
 		}
 
+		if skipEmpty && val == "" {
+			continue
+		}
 		if !hasVal {
-			return c, fmt.Errorf("line %d: expected key = value", n)
+			return fmt.Errorf("line %d: expected key = value", n)
 		}
 		if err := c.set(section, strings.ToLower(key), val); err != nil {
-			return c, fmt.Errorf("line %d: %w", n, err)
+			return fmt.Errorf("line %d: %w", n, err)
 		}
 	}
-	return c, sc.Err()
+	return sc.Err()
 }
 
 func (c *Config) set(section, key, val string) error {

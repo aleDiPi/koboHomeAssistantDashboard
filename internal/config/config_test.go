@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -42,5 +44,31 @@ func TestStandbyLabels(t *testing.T) {
 	}
 	if s := c.Screensaver; s.Indoor != (Item{Entity: "sensor.a", Name: "Studio"}) || s.Outdoor != (Item{Entity: "sensor.b", Name: "Esterno"}) {
 		t.Errorf("%+v", s)
+	}
+}
+
+func TestSecretsFileWinsOnlyWhenFilled(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, lines ...string) {
+		os.WriteFile(filepath.Join(dir, name), []byte(strings.Join(lines, string(rune(10)))), 0o600)
+	}
+	write("dashboard.ini", "[homeassistant]", "url = http://a", "token = from-main")
+	load := func() Config {
+		c, err := Load(filepath.Join(dir, "dashboard.ini"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	if load().Token != "from-main" {
+		t.Error("without a secrets file")
+	}
+	write(SecretsFile, "[homeassistant]", "token =")
+	if load().Token != "from-main" {
+		t.Error("a blank value must not erase")
+	}
+	write(SecretsFile, "[homeassistant]", "token = from-secrets")
+	if c := load(); c.Token != "from-secrets" || c.URL != "http://a" {
+		t.Errorf("%q %q", c.Token, c.URL)
 	}
 }

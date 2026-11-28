@@ -128,6 +128,13 @@ go run ./tools/release -init    # una volta sola: crea la chiave
 La prima installazione di questa funzione richiede ancora il cavo (programma,
 `start.sh` e la riga `key` in `[update]`).
 
+## Dati riservati
+
+Il token può stare in `secrets.ini` accanto a `dashboard.ini` (modello in
+`secrets.example.ini`): così la configurazione si può condividere o
+sostituire senza toccarlo. Gli aggiornamenti via Wi-Fi non toccano nessuno dei
+due file.
+
 ## Provarla sul PC
 
 Con dati finti:
