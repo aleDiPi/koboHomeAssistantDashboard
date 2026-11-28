@@ -1,0 +1,1 @@
+KERNEL=="loop0", ACTION=="add", RUN+="/bin/sh /usr/local/kobodash/boot.sh"

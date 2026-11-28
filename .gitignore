@@ -1,6 +1,14 @@
 # local configuration: contains the Home Assistant token
 dashboard.ini
+secrets.ini
 # build output and local toolchain
 /dist/
+# signing key of the updates: never publish it
+/.keys/
+/standby.*
+/standby/
 /.tools/
 *.log
+
+# Kobo backup: personal data
+/backup/
