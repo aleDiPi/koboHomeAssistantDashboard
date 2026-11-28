@@ -102,6 +102,28 @@ func TestFailedSuspendIsNotRetriedAtOnce(t *testing.T) {
 	}
 }
 
+// At home on external power the screen locks but the device stays awake.
+func TestLocksWithoutSleepingOnPower(t *testing.T) {
+	a, _, _ := testApp(ui.Lights)
+	a.cfg.Power.Standby = true
+	power := &fakePower{plugged: true}
+	a.power = power
+	now := time.Now()
+	a.lastTouch = now
+	a.standby(now.Add(a.cfg.Power.Idle + time.Second))
+	if !a.asleep || a.dark || len(power.naps) != 0 {
+		t.Fatalf("locked %v, dark %v, naps %v", a.asleep, a.dark, power.naps)
+	}
+	if _, ok := a.frame.Hit(centre(a.frame.Image.Rect)); ok {
+		t.Fatal("the lock screen has something to tap")
+	}
+	a.userWake(now)
+	a.render(true)
+	if a.asleep || a.view != ui.Lights {
+		t.Fatalf("locked %v, view %v", a.asleep, a.view)
+	}
+}
+
 // If Wi-Fi does not come back, no more suspends: stay awake and keep trying.
 func TestLostWifiStopsStandby(t *testing.T) {
 	a, _, _ := testApp(ui.Home)

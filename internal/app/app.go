@@ -66,7 +66,8 @@ type App struct {
 	lastTouch  time.Time
 	rendered   time.Time
 	power      Power // nil when standby is not possible
-	asleep     bool  // showing the standby notice
+	asleep     bool  // showing the lock screen
+	dark       bool  // locked to suspend: light off, only the button wakes
 	waking     bool  // waiting for fresh data after a suspend
 	wakeLimit  time.Time
 	awakeUntil time.Time
@@ -146,8 +147,14 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			if !ok {
 				return errors.New("touch input lost")
 			}
+			locked := a.asleep
 			a.userWake(time.Now())
 			log.Printf("tap %v", p)
+			if locked {
+				// The first touch only opens the dashboard.
+				a.render(true)
+				continue
+			}
 			exit, delay := a.tap(p)
 			if exit {
 				log.Print("closed with Esci")
@@ -185,6 +192,12 @@ func (a *App) Run(ctx context.Context, taps <-chan image.Point) error {
 			if m := a.now().Minute(); m != minute {
 				minute = m
 				a.battery = kobo.Battery()
+				// A lock screen left up over midnight changes picture.
+				if old := a.picturePath; a.asleep {
+					if a.pickPicture(); a.picturePath != old {
+						a.render(true)
+					}
+				}
 				schedule(0)
 			}
 			if a.cfg.FullRefreshEvery > 0 && now.Sub(a.lastFlash) >= a.cfg.FullRefreshEvery {
@@ -202,7 +215,7 @@ func (a *App) model() ui.Model {
 		Layout: a.src.Layout(), States: states,
 		Config: a.cfg.Screensaver, Picture: a.picture, Connected: connected,
 		Now: a.now(), View: a.view, Page: a.page, Pending: map[string]float64{},
-		Armed: a.armed,
+		Armed: a.armed, Touch: !a.dark,
 
 		History: a.src.History(), Battery: a.battery, Events: a.src.Events(),
 	}

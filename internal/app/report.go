@@ -52,6 +52,9 @@ func sensors(s deviceState) []ha.Sensor {
 	}
 	if s.asleep {
 		mode = "standby"
+		if s.plugged {
+			mode = "blocco"
+		}
 	}
 	out := []ha.Sensor{
 		{Entity: "sensor.kobo_batteria", State: strconv.Itoa(s.battery),

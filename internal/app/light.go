@@ -28,7 +28,7 @@ func lightLevel(c config.Frontlight, states map[string]ha.State, sinceTouch time
 
 func (a *App) updateLight(now time.Time) {
 	// Nobody is looking during a timed wake: leave the light off.
-	if !a.cfg.Frontlight.Manage || a.asleep {
+	if !a.cfg.Frontlight.Manage || a.dark {
 		return
 	}
 	states, connected, _ := a.src.Snapshot()

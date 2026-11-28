@@ -249,7 +249,7 @@ func (c *Config) set(section, key, val string) error {
 	case "power.presence":
 		c.Power.Presence = strings.Fields(strings.ReplaceAll(val, ",", " "))
 	case "power.idle":
-		c.Power.Idle, err = atLeast(val, 30*time.Second)
+		c.Power.Idle, err = atLeast(val, 10*time.Second)
 	case "power.home_refresh":
 		c.Power.HomeRefresh, err = atLeast(val, time.Minute)
 	case "power.away_refresh":

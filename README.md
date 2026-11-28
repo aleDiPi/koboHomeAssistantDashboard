@@ -72,7 +72,7 @@ Con `standby = true` in `[power]`:
 
 | Situazione | Comportamento |
 | --- | --- |
-| In casa, alimentato | sempre acceso |
+| In casa, alimentato | schermata di blocco, sveglio: si apre con un tocco |
 | In casa, a batteria | dorme; si aggiorna ogni `home_refresh` |
 | Nessuno in casa | dorme; si aggiorna ogni `away_refresh` |
 
@@ -85,7 +85,9 @@ come `onda@0.12.jpg` sceglie cosa tenere nel ritaglio) (PNG o JPEG, meglio
 orizzontale e contrastata) con la temperatura della sala e quella esterna; alla
 pressione del tasto compare subito "Mi sto riattivando…".
 
-Dorme dopo `idle` senza tocchi. Mentre dorme il touch non risponde: premi il
+Dopo `idle` senza tocchi compare la schermata di blocco. Se il Kobo resta
+sveglio, il primo tocco apre la dashboard (senza comandare nulla). Se invece
+dorme, il touch non risponde: premi il
 tasto di accensione. Lo schermo mostra "Standby" con l'ora dell'ultimo
 aggiornamento.
 

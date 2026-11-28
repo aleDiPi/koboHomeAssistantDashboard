@@ -68,8 +68,8 @@ func tag(img *image.Gray, s string, size, x, y int, a align) {
 	text(img, f, s, r.Inset(6), y+height/2, center, black)
 }
 
-// RenderSleep draws what stays on screen while the device is suspended: a
-// picture, the temperatures of the last wake in small, and how to wake it.
+// RenderSleep draws the lock screen, which also stays up while the device is
+// suspended: a picture, the temperatures in small, and how to open it.
 func RenderSleep(m Model, w, h int) Frame {
 	f := blank(w, h)
 	img := f.Image
@@ -87,11 +87,20 @@ func RenderSleep(m Model, w, h int) Frame {
 	if labels := notices(m); len(labels) > 0 {
 		tag(img, strings.Join(labels, " · "), 22, w/2, h-96, center)
 	}
-	foot := "Premi il tasto di accensione · " + m.Now.Format("15:04")
+	how := "Premi il tasto di accensione"
+	if m.Touch {
+		how = "Tocca per aprire"
+	}
+	foot := how + " · " + m.Now.Format("15:04")
 	if m.Battery >= 0 {
 		foot += fmt.Sprintf(" · %d%%", m.Battery)
 	}
 	tag(img, foot, 19, w/2, h-48, center)
+	// Areas kept current while awake: nothing here can be tapped.
+	f.Regions = []Region{
+		{Rect: image.Rect(w/2, 0, w, 120)},
+		{Rect: image.Rect(0, h-100, w, h)},
+	}
 	return f
 }
 

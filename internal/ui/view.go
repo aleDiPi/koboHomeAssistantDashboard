@@ -74,6 +74,8 @@ type Model struct {
 	// Armed is the action waiting for a confirming second touch.
 	Armed   Action
 	Battery int // percent, negative if unknown
+	// Touch says that the lock screen opens with a touch (device awake).
+	Touch bool
 }
 
 type Frame struct {

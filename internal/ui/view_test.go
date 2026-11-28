@@ -140,8 +140,13 @@ func TestCountdown(t *testing.T) {
 
 func TestSpecialScreensHaveNothingToTap(t *testing.T) {
 	for _, f := range []Frame{RenderSleep(Model{Battery: 50}, 1024, 758), RenderWaking(1024, 758)} {
-		if f.View >= 0 || len(f.Regions) != 0 {
-			t.Errorf("view %d, %d regions", f.View, len(f.Regions))
+		if f.View >= 0 {
+			t.Errorf("view %d", f.View)
+		}
+		for _, r := range f.Regions {
+			if r.Action.Kind != None {
+				t.Errorf("tappable region %v", r.Rect)
+			}
 		}
 	}
 }

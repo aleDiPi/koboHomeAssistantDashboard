@@ -42,7 +42,7 @@ const (
 )
 
 // nap decides how long to sleep between two refreshes; zero means stay awake.
-// At home on external power nothing sleeps; at home on battery it naps; away
+// At home on external power nothing sleeps (the lock screen stays up, awake); at home on battery it naps; away
 // from home it naps longer, whatever the power.
 func nap(c config.Power, states map[string]ha.State, plugged bool) time.Duration {
 	if !c.Standby {
@@ -80,7 +80,8 @@ func (a *App) powerSave(now time.Time) {
 	log.Printf("power saving %v: %s", saving, kobo.PowerSave(saving))
 }
 
-// standby sleeps when it is time to. It is called regularly.
+// standby locks the screen, or sleeps, when it is time to. It is called
+// regularly.
 func (a *App) standby(now time.Time) {
 	if a.wifiLost {
 		if now.After(a.retryWifi) {
@@ -95,7 +96,7 @@ func (a *App) standby(now time.Time) {
 		}
 		return
 	}
-	if a.power == nil || now.Before(a.awakeUntil) || len(a.temps) > 0 || a.armed.Kind != ui.None {
+	if a.power == nil || len(a.temps) > 0 || a.armed.Kind != ui.None {
 		return
 	}
 	states, connected, _ := a.src.Snapshot()
@@ -107,6 +108,10 @@ func (a *App) standby(now time.Time) {
 		a.waking = false
 		if a.asleep {
 			a.pickPicture() // the day may have changed
+		} else {
+			// Woken by the button: the idle time starts when there is
+			// something to look at.
+			a.lastTouch = now
 		}
 		if !connected {
 			log.Print("standby: no connection after waking")
@@ -115,17 +120,35 @@ func (a *App) standby(now time.Time) {
 		a.awakeUntil = now.Add(glance)
 		return
 	}
-	d := nap(a.cfg.Power, states, a.power.Plugged())
-	if d <= 0 || now.Sub(a.lastTouch) < a.cfg.Power.Idle {
-		a.asleep = false
+	if !a.cfg.Power.Standby || now.Sub(a.lastTouch) < a.cfg.Power.Idle {
 		return
 	}
-	a.sleep(d)
+	d := nap(a.cfg.Power, states, a.power.Plugged())
+	if d > 0 && !now.Before(a.awakeUntil) {
+		a.sleep(d)
+		return
+	}
+	a.lock(now, d == 0)
+}
+
+// lock puts up the lock screen with the device awake: a touch opens the
+// dashboard. stays means that no suspend is going to follow.
+func (a *App) lock(now time.Time, stays bool) {
+	if a.asleep && !(stays && a.dark) {
+		return
+	}
+	if !a.asleep {
+		a.asleep = true
+		a.pickPicture()
+	}
+	a.dark = false
+	a.render(false)
+	a.updateLight(now)
 }
 
 func (a *App) sleep(d time.Duration) {
 	// The screensaver stays on the panel while the device sleeps.
-	a.asleep, a.view, a.page = true, ui.Home, 0
+	a.asleep, a.dark, a.view, a.page = true, true, ui.Home, 0
 	a.pickPicture()
 	a.render(false)
 	if a.cfg.Frontlight.Manage {
@@ -167,7 +190,8 @@ func (a *App) sleep(d time.Duration) {
 	}
 	if err != nil {
 		log.Printf("standby failed: %v", err)
-		a.asleep, a.awakeUntil = false, now.Add(retryAfter)
+		a.asleep, a.dark, a.awakeUntil = false, false, now.Add(retryAfter)
+		a.lastTouch = now
 		a.render(true)
 		return
 	}
@@ -186,6 +210,6 @@ func (a *App) showWaking() {
 
 // userWake keeps the device awake as after a touch.
 func (a *App) userWake(now time.Time) {
-	a.lastTouch, a.asleep = now, false
+	a.lastTouch, a.asleep, a.dark = now, false, false
 	a.updateLight(now)
 }
