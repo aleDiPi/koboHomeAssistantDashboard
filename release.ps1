@@ -26,7 +26,8 @@ try {
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if ($Publish) {
-    gh release create "v$version" dist\release\kobodash.zip dist\release\kobodash.zip.sig dist\release\version.txt --title "v$version" --notes $Notes --latest
+    # Tag the commit that was built, which must already be on GitHub.
+    gh release create "v$version" --target (git rev-parse HEAD) dist\release\kobodash.zip dist\release\kobodash.zip.sig dist\release\version.txt --title "v$version" --notes $Notes --latest
 } else {
     Write-Output "Pronta in dist\release (versione $version). Con -Publish la pubblichi su GitHub."
 }
