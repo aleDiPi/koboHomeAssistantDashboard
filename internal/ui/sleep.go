@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aleDiPi/koboHomeAssistantDashboard/internal/config"
 	xdraw "golang.org/x/image/draw"
 )
 
@@ -29,10 +30,9 @@ func reading(m Model, entity string) string {
 // temperatures draws the readings side by side, alike, in one box in the top
 // right corner.
 func temperatures(img *image.Gray, m Model, w int) {
-	type column struct{ label, entity string }
-	var columns []column
-	for _, c := range []column{{"Sala", m.Config.Indoor}, {"Fuori", m.Config.Outdoor}} {
-		if c.entity != "" {
+	var columns []config.Item
+	for _, c := range []config.Item{m.Config.Indoor, m.Config.Outdoor} {
+		if c.Entity != "" {
 			columns = append(columns, c)
 		}
 	}
@@ -45,8 +45,8 @@ func temperatures(img *image.Gray, m Model, w int) {
 	for i, c := range columns {
 		x := box.Min.X + i*width
 		cell := image.Rect(x+6, box.Min.Y, x+width-6, box.Max.Y)
-		text(img, face(false, 20), c.label, cell, box.Min.Y+20, center, darkGray)
-		text(img, face(true, 36), reading(m, c.entity), cell, box.Min.Y+54, center, black)
+		text(img, face(false, 20), c.Name, cell, box.Min.Y+20, center, darkGray)
+		text(img, face(true, 36), reading(m, c.Entity), cell, box.Min.Y+54, center, black)
 		if i > 0 {
 			fill(img, image.Rect(x, box.Min.Y+14, x+2, box.Max.Y-14), midGray)
 		}

@@ -1,5 +1,9 @@
 # Kobo Home Assistant Dashboard
 
+Questo repository contiene solo il programma. Entità, schermate, immagini e
+token sono di chi lo installa e restano fuori da qui: in `dashboard.ini` (non
+versionato), nella cartella `standby/` e in una dashboard di Home Assistant.
+
 Pannello touch per Home Assistant su un Kobo Glo (N613). Un programma Go statico
 disegna direttamente sul framebuffer e-ink, legge il touch e riceve gli stati in
 tempo reale dalla WebSocket API.

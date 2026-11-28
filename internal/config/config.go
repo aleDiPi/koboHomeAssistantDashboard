@@ -55,6 +55,15 @@ type Config struct {
 	Climate   []Item
 }
 
+// set reads "entity" or "entity | label".
+func (it *Item) set(val string) {
+	entity, label, _ := strings.Cut(val, "|")
+	it.Entity = strings.TrimSpace(entity)
+	if label = strings.TrimSpace(label); label != "" {
+		it.Name = label
+	}
+}
+
 // Frontlight controls the screen light.
 type Frontlight struct {
 	Manage     bool // false leaves the light as the Kobo had it
@@ -89,8 +98,8 @@ type Screensaver struct {
 	Picture string
 	// Focus chooses what survives the crop: 0 left or top, 1 right or bottom.
 	Focus   float64
-	Indoor  string // temperature sensor of the living room
-	Outdoor string
+	Indoor  Item // temperature sensor inside, with its label
+	Outdoor Item
 }
 
 // Update says where new versions come from. Without a key it is off.
@@ -113,7 +122,7 @@ func Default() Config {
 		TouchSwapXY:      true,
 		TouchMirrorX:     true,
 		Power:            Power{Idle: 2 * time.Minute, HomeRefresh: 5 * time.Minute, AwayRefresh: 15 * time.Minute, ReportOnBattery: 15 * time.Minute},
-		Screensaver:      Screensaver{Focus: 0.5},
+		Screensaver:      Screensaver{Focus: 0.5, Indoor: Item{Name: "Interno"}, Outdoor: Item{Name: "Esterno"}},
 		Update: Update{
 			URL:        "https://github.com/aleDiPi/koboHomeAssistantDashboard/releases/latest/download",
 			CheckEvery: time.Hour,
@@ -253,9 +262,9 @@ func (c *Config) set(section, key, val string) error {
 			err = fmt.Errorf("focus must be between 0 and 1")
 		}
 	case "standby.indoor":
-		c.Screensaver.Indoor = val
+		c.Screensaver.Indoor.set(val)
 	case "standby.outdoor":
-		c.Screensaver.Outdoor = val
+		c.Screensaver.Outdoor.set(val)
 	case "update.url":
 		c.Update.URL = val
 	case "update.key":

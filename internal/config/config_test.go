@@ -34,3 +34,13 @@ func TestIconAndWindows(t *testing.T) {
 		t.Errorf("got %+v %+v", c.Lights, c.Windows)
 	}
 }
+
+func TestStandbyLabels(t *testing.T) {
+	c, err := Parse(strings.NewReader("[standby]" + string(rune(10)) + "indoor = sensor.a | Studio" + string(rune(10)) + "outdoor = sensor.b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := c.Screensaver; s.Indoor != (Item{Entity: "sensor.a", Name: "Studio"}) || s.Outdoor != (Item{Entity: "sensor.b", Name: "Esterno"}) {
+		t.Errorf("%+v", s)
+	}
+}
